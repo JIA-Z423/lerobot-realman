@@ -1,177 +1,299 @@
-<p align="center">
-  <img alt="LeRobot, Hugging Face Robotics Library" src="./media/readme/lerobot-logo-thumbnail.png" width="100%">
-</p>
+# RealMan 双臂 LeRobot 采集说明
 
-<div align="center">
+本文档说明如何使用 RealMan 双臂 ALOHA 风格平台接入 [LeRobot](https://github.com/huggingface/lerobot)，完成被动式数据采集。
 
-[![Tests](https://github.com/huggingface/lerobot/actions/workflows/latest_deps_tests.yml/badge.svg?branch=main)](https://github.com/huggingface/lerobot/actions/workflows/latest_deps_tests.yml?query=branch%3Amain)
-[![Tests](https://github.com/huggingface/lerobot/actions/workflows/docker_publish.yml/badge.svg?branch=main)](https://github.com/huggingface/lerobot/actions/workflows/docker_publish.yml?query=branch%3Amain)
-[![Python versions](https://img.shields.io/pypi/pyversions/lerobot)](https://www.python.org/downloads/)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/huggingface/lerobot/blob/main/LICENSE)
-[![Status](https://img.shields.io/pypi/status/lerobot)](https://pypi.org/project/lerobot/)
-[![Version](https://img.shields.io/pypi/v/lerobot)](https://pypi.org/project/lerobot/)
-[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-v2.1-ff69b4.svg)](https://github.com/huggingface/lerobot/blob/main/CODE_OF_CONDUCT.md)
-[![Discord](https://img.shields.io/badge/Discord-Join_Us-5865F2?style=flat&logo=discord&logoColor=white)](https://discord.gg/q8Dzzpym3f)
+本仓库主体基于 Hugging Face LeRobot 项目，当前工作是在 LeRobot 的机器人、主手、相机和数据集接口之上，增加本实验室 RealMan 双臂设备的硬件适配和采集流程。文档面向后续继续使用该设备采集数据、训练策略和复现实验的同学。
 
-</div>
+当前流程会记录：
 
-**LeRobot** aims to provide models, datasets, and tools for real-world robotics in PyTorch. The goal is to lower the barrier to entry so that everyone can contribute to and benefit from shared datasets and pretrained models.
+- 双主手动作
+- 双从臂状态
+- 左右腕部相机视频
 
-🤗 A hardware-agnostic, Python-native interface that standardizes control across diverse platforms, from low-cost arms (SO-100) to humanoids.
+默认使用被动采集模式。机械臂由外部 RealMan 或厂家控制系统驱动，LeRobot 只负责同步记录数据，不主动下发机械臂控制命令。
 
-🤗 A standardized, scalable LeRobotDataset format (Parquet + MP4 or images) hosted on the Hugging Face Hub, enabling efficient storage, streaming and visualization of massive robotic datasets.
+## 1. 项目说明
 
-🤗 State-of-the-art policies that have been shown to transfer to the real-world ready for training and deployment.
+上游项目：
 
-🤗 Comprehensive support for the open-source ecosystem to democratize physical AI.
+- LeRobot: <https://github.com/huggingface/lerobot>
+- LeRobot 文档: <https://huggingface.co/docs/lerobot>
 
-## Quick Start
+本项目中的 `rm_aloha_v1/` 为睿尔曼公司提供的双臂配套项目代码，主要用于参考厂家原始通信方式、主手协议和 RealMan ALOHA 使用流程。
 
-LeRobot can be installed directly from PyPI.
+当前 LeRobot 集成代码主要包括：
 
-```bash
-pip install lerobot
-lerobot-info
-```
+| 路径 | 说明 |
+| --- | --- |
+| `configs/hardware/realman_double_arm_hardware_config.yaml` | 双臂采集配置文件 |
+| `examples/realman/check_realman_double_arm.py` | 双臂硬件检查脚本 |
+| `src/lerobot/robots/realman_follower/` | 单个 RealMan 从臂封装 |
+| `src/lerobot/robots/double_realman_follower/` | RealMan 双从臂封装 |
+| `src/lerobot/teleoperators/rm_aloha_master/` | 单个 RM ALOHA 主手封装 |
+| `src/lerobot/teleoperators/double_rm_aloha_master/` | 双主手封装 |
 
-> [!IMPORTANT]
-> For detailed installation guide, please see the [Installation Documentation](https://huggingface.co/docs/lerobot/installation).
+## 1.1 版本管理说明
 
-## Robots & Control
-
-<div align="center">
-  <img src="./media/readme/robots_control_video.webp" width="640px" alt="Reachy 2 Demo">
-</div>
-
-LeRobot provides a unified `Robot` class interface that decouples control logic from hardware specifics. It supports a wide range of robots and teleoperation devices.
-
-```python
-from lerobot.robots.myrobot import MyRobot
-
-# Connect to a robot
-robot = MyRobot(config=...)
-robot.connect()
-
-# Read observation and send action
-obs = robot.get_observation()
-action = model.select_action(obs)
-robot.send_action(action)
-```
-
-**Supported Hardware:** SO100, LeKiwi, Koch, HopeJR, OMX, EarthRover, Reachy2, Gamepads, Keyboards, Phones, OpenARM, Unitree G1.
-
-While these devices are natively integrated into the LeRobot codebase, the library is designed to be extensible. You can easily implement the Robot interface to utilize LeRobot's data collection, training, and visualization tools for your own custom robot.
-
-For detailed hardware setup guides, see the [Hardware Documentation](https://huggingface.co/docs/lerobot/integrate_hardware).
-
-## LeRobot Dataset
-
-To solve the data fragmentation problem in robotics, we utilize the **LeRobotDataset** format.
-
-- **Structure:** Synchronized MP4 videos (or images) for vision and Parquet files for state/action data.
-- **HF Hub Integration:** Explore thousands of robotics datasets on the [Hugging Face Hub](https://huggingface.co/lerobot).
-- **Tools:** Seamlessly delete episodes, split by indices/fractions, add/remove features, and merge multiple datasets.
-
-```python
-from lerobot.datasets.lerobot_dataset import LeRobotDataset
-
-# Load a dataset from the Hub
-dataset = LeRobotDataset("lerobot/aloha_mobile_cabinet")
-
-# Access data (automatically handles video decoding)
-episode_index=0
-print(f"{dataset[episode_index]['action'].shape=}\n")
-```
-
-Learn more about it in the [LeRobotDataset Documentation](https://huggingface.co/docs/lerobot/lerobot-dataset-v3)
-
-## SoTA Models
-
-LeRobot implements state-of-the-art policies in pure PyTorch, covering Imitation Learning, Reinforcement Learning, and Vision-Language-Action (VLA) models, with more coming soon. It also provides you with the tools to instrument and inspect your training process.
-
-<p align="center">
-  <img alt="Gr00t Architecture" src="./media/readme/VLA_architecture.jpg" width="640px">
-</p>
-
-Training a policy is as simple as running a script configuration:
+建议将本仓库作为独立 Git 仓库维护：
 
 ```bash
-lerobot-train \
-  --policy=act \
-  --dataset.repo_id=lerobot/aloha_mobile_cabinet
+git remote add origin git@github.com:<your_github_username>/<your_repo>.git
+git remote add upstream https://github.com/huggingface/lerobot.git
 ```
 
-| Category                   | Models                                                                                                                                                                                                                  |
-| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Imitation Learning**     | [ACT](./docs/source/policy_act_README.md), [Diffusion](./docs/source/policy_diffusion_README.md), [VQ-BeT](./docs/source/policy_vqbet_README.md), [Multitask DiT Policy](./docs/source/policy_multi_task_dit_README.md) |
-| **Reinforcement Learning** | [HIL-SERL](./docs/source/hilserl.mdx), [TDMPC](./docs/source/policy_tdmpc_README.md) & QC-FQL (coming soon)                                                                                                             |
-| **VLAs Models**            | [Pi0Fast](./docs/source/pi0fast.mdx), [Pi0.5](./docs/source/pi05.mdx), [GR00T N1.5](./docs/source/policy_groot_README.md), [SmolVLA](./docs/source/policy_smolvla_README.md), [XVLA](./docs/source/xvla.mdx)            |
+其中 `origin` 指向自己的二次开发仓库，`upstream` 指向 Hugging Face LeRobot 上游仓库。后续同步上游更新时，可以从 `upstream` 拉取，再在本项目分支中处理冲突。
 
-Similarly to the hardware, you can easily implement your own policy & leverage LeRobot's data collection, training, and visualization tools, and share your model to the HF Hub
+以下内容默认不提交到 GitHub：
 
-For detailed policy setup guides, see the [Policy Documentation](https://huggingface.co/docs/lerobot/bring_your_own_policies).
+- 本地采集数据：`datasets/`
+- 训练、评估和采集输出：`outputs/`
+- 可视化导出：`visualizations/`
+- 厂家样例数据和视频：`rm_aloha_v1/aloha_data/`、`rm_aloha_v1/aloha_data_visualize/`
+- 本地私有硬件配置：`configs/hardware/*.local.yaml`
+- checkpoint、`.hdf5`、`.rrd` 等大文件或运行产物
 
-## Inference & Evaluation
+本仓库的公开配置使用占位符。真实设备配置请放在 `configs/hardware/realman_double_arm_hardware_config.local.yaml`，该文件会被 `.gitignore` 忽略。
 
-Evaluate your policies in simulation or on real hardware using the unified evaluation script. LeRobot supports standard benchmarks like **LIBERO**, **MetaWorld** and more to come.
+## 2. 环境安装
+
+进入 LeRobot 环境：
 
 ```bash
-# Evaluate a policy on the LIBERO benchmark
-lerobot-eval \
-  --policy.path=lerobot/pi0_libero_finetuned \
-  --env.type=libero \
-  --env.task=libero_object \
-  --eval.n_episodes=10
+conda activate lerobot
+export PYTHONPATH=$PWD/src:$PYTHONPATH
 ```
 
-Learn how to implement your own simulation environment or benchmark and distribute it from the HF Hub by following the [EnvHub Documentation](https://huggingface.co/docs/lerobot/envhub)
+检查主要依赖：
 
-## Resources
-
-- **[Documentation](https://huggingface.co/docs/lerobot/index):** The complete guide to tutorials & API.
-- **[Chinese Tutorials: LeRobot+SO-ARM101中文教程-同济子豪兄](https://zihao-ai.feishu.cn/wiki/space/7589642043471924447)** Detailed doc for assembling, teleoperate, dataset, train, deploy. Verified by Seed Studio and 5 global hackathon players.
-- **[Discord](https://discord.gg/q8Dzzpym3f):** Join the `LeRobot` server to discuss with the community.
-- **[X](https://x.com/LeRobotHF):** Follow us on X to stay up-to-date with the latest developments.
-- **[Robot Learning Tutorial](https://huggingface.co/spaces/lerobot/robot-learning-tutorial):** A free, hands-on course to learn robot learning using LeRobot.
-
-## Citation
-
-If you use LeRobot in your project, please cite the GitHub repository to acknowledge the ongoing development and contributors:
-
-```bibtex
-@misc{cadene2024lerobot,
-    author = {Cadene, Remi and Alibert, Simon and Soare, Alexander and Gallouedec, Quentin and Zouitine, Adil and Palma, Steven and Kooijmans, Pepijn and Aractingi, Michel and Shukor, Mustafa and Aubakirova, Dana and Russi, Martino and Capuano, Francesco and Pascal, Caroline and Choghari, Jade and Moss, Jess and Wolf, Thomas},
-    title = {LeRobot: State-of-the-art Machine Learning for Real-World Robotics in Pytorch},
-    howpublished = "\url{https://github.com/huggingface/lerobot}",
-    year = {2024}
-}
+```bash
+python -c "import serial, pyrealsense2, draccus; print('ok')"
 ```
 
-If you are referencing our research or the academic paper, please also cite our ICLR publication:
+如果需要从零安装依赖：
 
-<details>
-<summary><b>ICLR 2026 Paper</b></summary>
-
-```bibtex
-@inproceedings{cadenelerobot,
-  title={LeRobot: An Open-Source Library for End-to-End Robot Learning},
-  author={Cadene, Remi and Alibert, Simon and Capuano, Francesco and Aractingi, Michel and Zouitine, Adil and Kooijmans, Pepijn and Choghari, Jade and Russi, Martino and Pascal, Caroline and Palma, Steven and Shukor, Mustafa and Moss, Jess and Soare, Alexander and Aubakirova, Dana and Lhoest, Quentin and Gallou\'edec, Quentin and Wolf, Thomas},
-  booktitle={The Fourteenth International Conference on Learning Representations},
-  year={2026},
-  url={https://arxiv.org/abs/2602.22818}
-}
+```bash
+uv sync --locked --extra core_scripts --extra intelrealsense
 ```
 
-</details>
+## 3. 硬件参数
 
-## Contribute
+公开配置使用以下占位符。运行前请在本地 `.local.yaml` 配置中替换为真实设备参数：
 
-We welcome contributions from everyone in the community! To get started, please read our [CONTRIBUTING.md](https://github.com/huggingface/lerobot/blob/main/CONTRIBUTING.md) guide. Whether you're adding a new feature, improving documentation, or fixing a bug, your help and feedback are invaluable. We're incredibly excited about the future of open-source robotics and can't wait to work with you on what's next—thank you for your support!
+| 设备 | 参数 |
+| --- | --- |
+| 左从臂 | `REPLACE_WITH_LEFT_REALMAN_ARM_HOST:8080` |
+| 右从臂 | `REPLACE_WITH_RIGHT_REALMAN_ARM_HOST:8080` |
+| 左主手 | `REPLACE_WITH_LEFT_MASTER_SERIAL_PORT` |
+| 右主手 | `REPLACE_WITH_RIGHT_MASTER_SERIAL_PORT` |
+| 左腕相机 | `REPLACE_WITH_LEFT_WRIST_CAMERA_SERIAL` |
+| 右腕相机 | `REPLACE_WITH_RIGHT_WRIST_CAMERA_SERIAL` |
 
-<p align="center">
-  <img alt="SO101 Video" src="./media/readme/so100_video.webp" width="640px">
-</p>
+如果重启后串口名发生变化，建议把 `/dev/ttyUSB*` 改成稳定的设备路径：
 
-<div align="center">
-<sub>Built by the <a href="https://huggingface.co/lerobot">LeRobot</a> team at <a href="https://huggingface.co">Hugging Face</a> with ❤️</sub>
-</div>
+```bash
+ls -l /dev/serial/by-id/
+```
+
+## 4. 配置文件
+
+公开模板配置文件：
+
+```bash
+configs/hardware/realman_double_arm_hardware_config.yaml
+```
+
+真实采集建议使用本地配置文件：
+
+```bash
+configs/hardware/realman_double_arm_hardware_config.local.yaml
+```
+
+关键默认项：
+
+```yaml
+passive_recording: true
+
+dataset:
+  repo_id: local/realman_double_arm_dataset
+  root: datasets/realman_double_arm_dataset
+  num_episodes: 1
+  fps: 10
+  episode_time_s: 8
+  reset_time_s: 0
+  streaming_encoding: false
+  vcodec: h264
+  push_to_hub: false
+
+robot:
+  type: double_realman_follower
+
+teleop:
+  type: double_rm_aloha_master
+```
+
+正式采集前通常需要确认：
+
+- `dataset.repo_id`
+- `dataset.root`
+- `dataset.single_task`
+- `dataset.num_episodes`
+- 相机序列号
+- 主手串口路径
+
+当前 `has_gripper` 默认为 `false`，避免未知夹爪接口导致采集阻塞。主手夹爪值仍会记录到动作向量中。
+
+## 5. 硬件检查
+
+运行完整检查：
+
+```bash
+python examples/realman/check_realman_double_arm.py \
+  --left-host=<left_arm_host> \
+  --right-host=<right_arm_host> \
+  --left-master-port=<left_master_serial_port> \
+  --right-master-port=<right_master_serial_port> \
+  --left-wrist-serial=<left_wrist_camera_serial> \
+  --right-wrist-serial=<right_wrist_camera_serial>
+```
+
+正常输出应包含：
+
+```text
+RealMan double-arm check passed.
+```
+
+测试只读循环速度：
+
+```bash
+python examples/realman/check_realman_double_arm.py \
+  --skip-followers --skip-masters --skip-cameras \
+  --benchmark-samples=50
+```
+
+其他常用检查：
+
+```bash
+python examples/realman/check_realman_double_arm.py --skip-cameras
+python examples/realman/check_realman_double_arm.py --check-gripper
+```
+
+## 6. 数据采集
+
+默认配置为本地采集 `1` 个 episode，每个 episode `8` 秒，`10 FPS`，数据保存到：
+
+```bash
+datasets/realman_double_arm_dataset
+```
+
+开始采集：
+
+```bash
+python -m lerobot.scripts.lerobot_record \
+  --config_path=configs/hardware/realman_double_arm_hardware_config.local.yaml \
+  --play_sounds=false
+```
+
+如需临时修改保存目录或 episode 数量，可以在命令行覆盖：
+
+```bash
+python -m lerobot.scripts.lerobot_record \
+  --config_path=configs/hardware/realman_double_arm_hardware_config.local.yaml \
+  --dataset.root=datasets/realman_double_arm_test \
+  --dataset.num_episodes=3 \
+  --play_sounds=false
+```
+
+继续采集已有本地数据集：
+
+```bash
+python -m lerobot.scripts.lerobot_record \
+  --config_path=configs/hardware/realman_double_arm_hardware_config.local.yaml \
+  --resume=true \
+  --play_sounds=false
+```
+
+## 7. 数据格式
+
+采集得到的数据包含：
+
+| 字段 | 说明 |
+| --- | --- |
+| `action` | 14 维双主手动作 |
+| `observation.state` | 14 维双从臂状态 |
+| `observation.images.left_wrist` | 左腕 RGB 视频 |
+| `observation.images.right_wrist` | 右腕 RGB 视频 |
+
+默认配置下，每个 8 秒 episode 约为 80 帧：
+
+```text
+8 秒 x 10 FPS = 80 帧
+```
+
+数据目录通常包含：
+
+```text
+datasets/realman_double_arm_dataset/
+├── data/
+├── meta/
+└── videos/
+```
+
+## 8. 数据可视化
+
+使用 LeRobot 数据集可视化工具查看视频、动作、状态和时间轴：
+
+```bash
+lerobot-dataset-viz \
+  --repo-id local/realman_double_arm_dataset \
+  --root datasets/realman_double_arm_dataset \
+  --episode-index 0
+```
+
+如果当前机器没有图形界面，可以导出 Rerun 文件：
+
+```bash
+mkdir -p visualizations
+
+lerobot-dataset-viz \
+  --repo-id local/realman_double_arm_dataset \
+  --root datasets/realman_double_arm_dataset \
+  --episode-index 0 \
+  --save 1 \
+  --output-dir visualizations
+```
+
+生成的 `.rrd` 文件可以在有图形界面的机器上打开：
+
+```bash
+rerun visualizations/local_realman_double_arm_dataset_episode_0.rrd
+```
+
+只查看数据集基本信息：
+
+```bash
+lerobot-edit-dataset \
+  --repo_id local/realman_double_arm_dataset \
+  --root datasets/realman_double_arm_dataset \
+  --operation.type=info
+```
+
+快速查看视频元信息：
+
+```bash
+conda run -n lerobot ffprobe \
+  -v error \
+  -select_streams v:0 \
+  -show_entries stream=codec_name,width,height,avg_frame_rate,nb_frames,duration \
+  -of default=noprint_wrappers=1 \
+  datasets/realman_double_arm_dataset/videos/observation.images.left_wrist/chunk-000/file-000.mp4
+```
+
+## 9. 说明
+
+- 当前稳定默认值为两路 `640x480` 腕部相机、`10 FPS`。
+- 机械臂和主手的只读循环速度可以超过 `30 Hz`。
+- 默认关闭实时视频编码，先写入图片，episode 结束后再编码，采集帧率更稳定。
+- `30 FPS` 或实时编码的主要瓶颈通常在图像写入或视频编码。
+- GPU 或硬件编码可能提升采集速度，但需要在目标电脑上实际测试。
+- 顶视或外部相机默认未启用，确认型号和序列号后再加入配置。
+- 无显示器环境下，`pynput` 或 `DISPLAY` 相关警告不影响被动采集。
