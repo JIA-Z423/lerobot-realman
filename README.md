@@ -1,10 +1,10 @@
-# RealMan 双臂 LeRobot 采集说明
+# RealMan 双臂 LeRobot 项目说明
 
 本文档说明如何使用 RealMan 双臂 ALOHA 风格平台接入 [LeRobot](https://github.com/huggingface/lerobot)，完成被动式数据采集。
 
-本仓库主体基于 Hugging Face LeRobot 项目，当前工作是在 LeRobot 的机器人、主手、相机和数据集接口之上，增加本实验室 RealMan 双臂设备的硬件适配和采集流程。
+本仓库主体基于 Hugging Face LeRobot 项目，当前工作是在 LeRobot 的机器人、主手、相机和数据集接口之上，增加本实验室 RealMan 双臂设备的硬件适配和采集流程。后续模型训练与部署推理也将继续沿用 LeRobot 的数据集、策略训练和真实机器人推理接口。
 
-当前流程会记录：
+当前已完成硬件采集流程，能够记录：
 
 - 双主手动作
 - 双从臂状态
@@ -32,7 +32,22 @@
 | `src/lerobot/teleoperators/rm_aloha_master/` | 单个 RM ALOHA 主手封装 |
 | `src/lerobot/teleoperators/double_rm_aloha_master/` | 双主手封装 |
 
-## 1.1 版本管理说明
+## 1.1 项目目录
+
+后续使用重点关注以下目录：
+
+| 路径 | 说明 |
+| --- | --- |
+| `src/lerobot/` | LeRobot 主体代码和 RealMan 硬件适配代码 |
+| `configs/hardware/` | 硬件采集配置 |
+| `examples/realman/` | RealMan 双臂检查脚本 |
+| `datasets/` | 本地采集数据，默认不提交 |
+| `outputs/` | 训练、评估和运行输出，默认不提交 |
+| `visualizations/` | Rerun 可视化导出文件，默认不提交 |
+| `rm_aloha_v1/` | 睿尔曼公司提供的配套项目代码 |
+
+
+## 1.2 版本管理说明
 
 建议将本仓库作为独立 Git 仓库维护：
 
@@ -41,18 +56,9 @@ git remote add origin git@github.com:<your_github_username>/<your_repo>.git
 git remote add upstream https://github.com/huggingface/lerobot.git
 ```
 
-其中 `origin` 指向自己的二次开发仓库，`upstream` 指向 Hugging Face LeRobot 上游仓库。后续同步上游更新时，可以从 `upstream` 拉取，再在本项目分支中处理冲突。
 
-以下内容默认不提交到 GitHub：
 
-- 本地采集数据：`datasets/`
-- 训练、评估和采集输出：`outputs/`
-- 可视化导出：`visualizations/`
-- 厂家样例数据和视频：`rm_aloha_v1/aloha_data/`、`rm_aloha_v1/aloha_data_visualize/`
-- 本地私有硬件配置：`configs/hardware/*.local.yaml`
-- checkpoint、`.hdf5`、`.rrd` 等大文件或运行产物
-
-本仓库的公开配置使用占位符。真实设备配置请放在 `configs/hardware/realman_double_arm_hardware_config.local.yaml`，该文件会被 `.gitignore` 忽略。
+本仓库的公开配置使用占位符。真实设备配置请放在 `configs/hardware/realman_double_arm_hardware_config.local.yaml`。
 
 ## 2. 环境安装
 
@@ -71,7 +77,7 @@ python -c "import serial, pyrealsense2, draccus; print('ok')"
 
 如果需要从零安装依赖：
 
-参考- LeRobot 安装文档: <https://huggingface.co/docs/lerobot/installation>
+参考LeRobot 安装文档：<https://huggingface.co/docs/lerobot/installation>
 
 ## 3. 硬件参数
 
@@ -286,9 +292,32 @@ conda run -n lerobot ffprobe \
   datasets/realman_double_arm_dataset/videos/observation.images.left_wrist/chunk-000/file-000.mp4
 ```
 
-## 9. 说明
+## 9. 模型训练
 
-- 当前稳定默认值为两路 `640x480` 腕部相机、`10 FPS`。
+待补充。
+
+
+- 数据集路径和 `repo_id` 选择
+- ACT / Diffusion / SmolVLA 等策略训练入口
+- 训练参数配置
+- checkpoint 保存位置
+- 训练日志和结果查看方式
+
+## 10. 部署推理
+
+待补充。
+
+
+
+- 加载训练好的 policy checkpoint
+- 使用 RealMan 双臂配置进行实机推理
+- 推理前硬件检查
+- 安全限位和急停注意事项
+- 评估 episode 的保存与回放
+
+## 11. 说明
+
+- 当前版本仅完成双臂、两路 `640x480` 腕部相机的`10 FPS`数据采集。
 - 机械臂和主手的只读循环速度可以超过 `30 Hz`。
 - 默认关闭实时视频编码，先写入图片，episode 结束后再编码，采集帧率更稳定。
 - `30 FPS` 或实时编码的主要瓶颈通常在图像写入或视频编码。
