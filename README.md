@@ -2,7 +2,7 @@
 
 本文档说明如何使用 RealMan 双臂 ALOHA 风格平台接入 [LeRobot](https://github.com/huggingface/lerobot)，完成被动式数据采集。
 
-本仓库主体基于 Hugging Face LeRobot 项目，当前工作是在 LeRobot 的机器人、主手、相机和数据集接口之上，增加本实验室 RealMan 双臂设备的硬件适配和采集流程。文档面向后续继续使用该设备采集数据、训练策略和复现实验的同学。
+本仓库主体基于 Hugging Face LeRobot 项目，当前工作是在 LeRobot 的机器人、主手、相机和数据集接口之上，增加本实验室 RealMan 双臂设备的硬件适配和采集流程。
 
 当前流程会记录：
 
@@ -71,9 +71,7 @@ python -c "import serial, pyrealsense2, draccus; print('ok')"
 
 如果需要从零安装依赖：
 
-```bash
-uv sync --locked --extra core_scripts --extra intelrealsense
-```
+参考- LeRobot 安装文档: <https://huggingface.co/docs/lerobot/installation>
 
 ## 3. 硬件参数
 
