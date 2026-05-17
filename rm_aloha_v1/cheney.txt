@@ -1,0 +1,29 @@
+# 运行机械臂ros
+cd ~/rm_aloha
+source ./devel/setup.bash
+roslaunch rm_aloha dual_arm_driver.launch
+
+# 运行摄像头 realsense
+cd ~/rm_aloha
+source ./devel/setup.bash
+roslaunch rm_aloha dual_arm_driver_with_cameras.launch 
+包含机械臂运行节点 取消注释就可用
+
+# 记录数据
+conda activate aloha
+python /home/rm/rm_aloha/src/rm_aloha/src/record_episodes.py
+
+# 获取机械臂关节，速度，电流
+real_env.py 
+--get_qpos()
+--get_qvel()
+--get_effort()
+
+
+train
+python3 imitate_episodes.py --task_name rm_test --ckpt_dir /home/rm/rm_aloha_pt --policy_class ACT --kl_weight 10 --chunk_size 100 --hidden_dim 512 --batch_size 16 --dim_feedforward 3200 --lr 1e-5 --seed 0 --num_steps 5000
+
+
+python3 imitate_episodes.py --task_name rm_data --ckpt_dir /home/rm/rm_aloha_data/train_7_5 --policy_class ACT --kl_weight 10 --chunk_size 100 --hidden_dim 512 --batch_size 16 --dim_feedforward 3200 --lr 1e-5 --seed 0 --num_steps 5000
+
+python3 imitate_episodes.py --task_name rm_data_717 --ckpt_dir /home/rm/rm_aloha_data/train_7_17 --policy_class ACT --kl_weight 10 --chunk_size 50 --hidden_dim 512 --batch_size 16 --dim_feedforward 3200 --lr 1e-5 --seed 0 --num_steps 5000

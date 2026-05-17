@@ -1,0 +1,91 @@
+
+
+robot:
+  type: double_realman_follower
+  id: realman_double_arm
+  left_arm_config:
+    host: REPLACE_WITH_LEFT_REALMAN_ARM_HOST
+    port: 8080
+    # 默认参考厂家 real_env.py 使用 TCP JSON。若要使用内置精简版 RM_Aloha SDK，改为 rm_aloha_sdk。
+    sdk_backend: socket_json
+    # sdk_backend: rm_aloha_sdk
+    arm_model: 65
+    control_hz: 10
+    joint_scale: 1000.0
+    has_gripper: false
+    gripper_scale: 1.0
+    gripper_open_value: 1000
+    gripper_speed: 500
+    initialize_gripper_route: true
+    move_command: movej_canfd
+    cameras:
+      # top:
+      #   type: intelrealsense
+      #   serial_number_or_name: REPLACE_WITH_TOP_CAMERA_SERIAL
+      #   width: 640
+      #   height: 480
+      #   fps: 30
+      wrist:
+        type: intelrealsense
+        serial_number_or_name: REPLACE_WITH_LEFT_WRIST_CAMERA_SERIAL
+        width: 640
+        height: 480
+        fps: 30
+  right_arm_config:
+    host: REPLACE_WITH_RIGHT_REALMAN_ARM_HOST
+    port: 8080
+    sdk_backend: socket_json
+    # sdk_backend: rm_aloha_sdk
+    arm_model: 65
+    control_hz: 10
+    joint_scale: 1000.0
+    has_gripper: false
+    gripper_scale: 1.0
+    gripper_open_value: 1000
+    gripper_speed: 500
+    initialize_gripper_route: true
+    move_command: movej_canfd
+    cameras:
+      wrist:
+        type: intelrealsense
+        serial_number_or_name: REPLACE_WITH_RIGHT_WRIST_CAMERA_SERIAL
+        width: 640
+        height: 480
+        fps: 30
+
+teleop:
+  type: double_rm_aloha_master
+  id: realman_double_master
+  left_arm_config:
+    port: REPLACE_WITH_LEFT_MASTER_SERIAL_PORT
+    baud_rate: 460800
+    timeout_s: 0.0
+    frame_timeout_s: 0.1
+    frame_header: AA55
+    joint_scale: 10000.0
+  right_arm_config:
+    port: REPLACE_WITH_RIGHT_MASTER_SERIAL_PORT
+    baud_rate: 460800
+    timeout_s: 0.0
+    frame_timeout_s: 0.1
+    frame_header: AA55
+    joint_scale: 10000.0
+
+dataset:
+  # Hugging Face 数据集名  建议格式：<your_hf_username>/<dataset_name>
+  repo_id: local/realman_double_arm_dataset
+  # 当前采集任务描述，会写进数据集 task 字段。
+  single_task: RealMan double-arm passive data collection
+  num_episodes: 1             #总共采集的episode数量
+  fps: 10
+  episode_time_s: 8          #每个episode的时间长度
+  reset_time_s: 0             #任务重置时间
+  root: datasets/realman_double_arm_dataset
+  # 当前机器实时 SVT-AV1 编码会拖慢采集主循环；先写入图片，episode 结束后再编码更稳定。
+  streaming_encoding: false
+  vcodec: h264
+  num_image_writer_threads_per_camera: 4
+  push_to_hub: false
+
+display_data: false
+passive_recording: true        #是否在teleop过程中被动记录数据，保持 true 时，LeRobot 只记录，不向平台下发控制命令。
