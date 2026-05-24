@@ -38,6 +38,7 @@ if REPO_SRC.exists():
 
 
 DEFAULT_JOINT_SCALE = 1000.0
+DEFAULT_GRIPPER_SCALE = 1000.0
 
 
 @dataclass(frozen=True)
@@ -114,7 +115,14 @@ def check_arm(endpoint: ArmEndpoint, *, timeout_s: float, check_gripper: bool) -
                 timeout_s=timeout_s,
                 expected_key="actpos",
             )
-            print(f"  get_gripper_state: ok, {elapsed_s * 1000:.1f} ms, response={response}")
+            raw_actpos = response.get("actpos")
+            if raw_actpos is None:
+                raise RuntimeError(f"unexpected gripper response: {response}")
+            scaled_actpos = float(raw_actpos) / DEFAULT_GRIPPER_SCALE
+            print(
+                f"  get_gripper_state: ok, {elapsed_s * 1000:.1f} ms, "
+                f"raw actpos={raw_actpos}, scaled={scaled_actpos}"
+            )
         except Exception as exc:
             ok = False
             print(f"  get_gripper_state: FAILED: {exc}")
@@ -217,7 +225,8 @@ def benchmark_passive_loop(args: argparse.Namespace) -> bool:
             left_arm_config=RealManFollowerBaseConfig(
                 host=args.left_host,
                 port=args.arm_port,
-                has_gripper=False,
+                has_gripper=args.check_gripper,
+                gripper_scale=DEFAULT_GRIPPER_SCALE,
                 cameras={
                     "wrist": RealSenseCameraConfig(
                         serial_number_or_name=args.left_wrist_serial,
@@ -230,7 +239,8 @@ def benchmark_passive_loop(args: argparse.Namespace) -> bool:
             right_arm_config=RealManFollowerBaseConfig(
                 host=args.right_host,
                 port=args.arm_port,
-                has_gripper=False,
+                has_gripper=args.check_gripper,
+                gripper_scale=DEFAULT_GRIPPER_SCALE,
                 cameras={
                     "wrist": RealSenseCameraConfig(
                         serial_number_or_name=args.right_wrist_serial,

@@ -25,6 +25,30 @@ from lerobot.teleoperators.rm_aloha_master.config_rm_aloha_master import RMAloha
 from lerobot.teleoperators.rm_aloha_master.rm_aloha_master import RMAlohaMaster
 
 
+def test_socket_client_scales_gripper_state():
+    client = RealManSocketClient(
+        RealManClientConfig(host="127.0.0.1", has_gripper=True, gripper_scale=1000.0)
+    )
+    client._send_command_with_expected_key = lambda payload, expected_key: {"actpos": 425}
+
+    assert client._read_gripper_value() == 0.425
+
+
+def test_socket_client_scales_gripper_command():
+    sent_payloads = []
+
+    client = RealManSocketClient(
+        RealManClientConfig(host="127.0.0.1", has_gripper=True, gripper_scale=1000.0)
+    )
+    client._send_command = sent_payloads.append
+
+    client.send_joint_positions({"gripper": 0.425})
+
+    assert sent_payloads == [
+        {"command": "set_gripper_position", "position": 425, "block": False}
+    ]
+
+
 def test_socket_client_pops_newline_delimited_json_messages():
     client = RealManSocketClient(RealManClientConfig(host="127.0.0.1"))
     client._receive_buffer = '{"state":"moving"}\r\n{"joint":[1,2,3,4,5,6]}\r\n'
@@ -108,25 +132,37 @@ def test_rm_aloha_master_does_not_treat_headerless_tail_as_complete_frame():
     teleop = object.__new__(RMAlohaMaster)
     teleop.config = config
 
-    assert not teleop._has_complete_frame("52AB09000023017D4AFDFF0152DC0500011A3B0C0001F101FFFF0154C5080001846C0600016C0000006B")
+    assert not teleop._has_complete_frame(
+        "52AB09000023017D4AFDFF0152DC0500011A3B0C0001F101FFFF0154C5080001846C0600016C0000006B"
+    )
 
 
 def test_rm_aloha_master_can_fall_back_to_state_frame_marker():
-    config = RMAlohaMasterConfig(port="/dev/null", frame_header="AA55", min_frame_hex_length=82)
+    config = RMAlohaMasterConfig(
+        port="/dev/null",
+        frame_header="AA55",
+        min_frame_hex_length=82,
+        gripper_scale=1000.0,
+    )
     teleop = object.__new__(RMAlohaMaster)
     teleop.config = config
 
     frame = bytearray.fromhex("54550200002301")
-    for raw_value in (10000, 20000, 30000, 40000, 50000, 60000, 70000):
+    for raw_value in (10000, 20000, 30000, 40000, 50000, 60000, 700):
         frame.extend(raw_value.to_bytes(4, byteorder="little", signed=True))
         frame.extend(b"\x01")
 
     assert teleop._has_complete_frame(frame.hex().upper())
-    assert teleop._decode_master_state(frame.hex().upper()) == [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 70000.0]
+    assert teleop._decode_master_state(frame.hex().upper()) == [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 0.7]
 
 
-def test_rm_aloha_master_accepts_ab_variant_state_frame():
-    config = RMAlohaMasterConfig(port="/dev/null", frame_header="AA55", min_frame_hex_length=82)
+def test_rm_aloha_master_scales_gripper():
+    config = RMAlohaMasterConfig(
+        port="/dev/null",
+        frame_header="AA55",
+        min_frame_hex_length=82,
+        gripper_scale=1000.0,
+    )
     teleop = object.__new__(RMAlohaMaster)
     teleop.config = config
 
@@ -140,7 +176,7 @@ def test_rm_aloha_master_accepts_ab_variant_state_frame():
         -6.5039,
         57.4804,
         42.0996,
-        108.0,
+        0.108,
     ]
 
 
@@ -167,7 +203,7 @@ def test_rm_aloha_sdk_client_uses_factory_sdk_method_names():
             self.last_gripper = (position, block)
             return 0
 
-    config = RealManClientConfig(host="127.0.0.1", has_gripper=True, gripper_scale=1.0)
+    config = RealManClientConfig(host="127.0.0.1", has_gripper=True, gripper_scale=1000.0)
     arm = FakeArm()
     client = object.__new__(RealManAlohaSDKClient)
     BaseRealManClient.__init__(client, config)
@@ -181,11 +217,11 @@ def test_rm_aloha_sdk_client_uses_factory_sdk_method_names():
         "joint_4": 4.0,
         "joint_5": 5.0,
         "joint_6": 6.0,
-        "gripper": 123.0,
+        "gripper": 0.123,
     }
 
     action = {f"joint_{idx}": float(idx) for idx in range(1, 7)}
-    action["gripper"] = 42.0
+    action["gripper"] = 0.042
     client.send_joint_positions(action)
 
     assert arm.last_canfd == ([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], False)

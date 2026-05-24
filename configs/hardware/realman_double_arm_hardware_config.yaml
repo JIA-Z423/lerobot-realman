@@ -12,8 +12,8 @@ robot:
     arm_model: 65
     control_hz: 10
     joint_scale: 1000.0
-    has_gripper: false
-    gripper_scale: 1.0
+    has_gripper: true
+    gripper_scale: 1000.0
     gripper_open_value: 1000
     gripper_speed: 500
     initialize_gripper_route: true
@@ -39,8 +39,8 @@ robot:
     arm_model: 65
     control_hz: 10
     joint_scale: 1000.0
-    has_gripper: false
-    gripper_scale: 1.0
+    has_gripper: true
+    gripper_scale: 1000.0
     gripper_open_value: 1000
     gripper_speed: 500
     initialize_gripper_route: true
@@ -63,6 +63,7 @@ teleop:
     frame_timeout_s: 0.1
     frame_header: AA55
     joint_scale: 10000.0
+    gripper_scale: 1000.0
   right_arm_config:
     port: REPLACE_WITH_RIGHT_MASTER_SERIAL_PORT
     baud_rate: 460800
@@ -70,6 +71,7 @@ teleop:
     frame_timeout_s: 0.1
     frame_header: AA55
     joint_scale: 10000.0
+    gripper_scale: 1000.0
 
 dataset:
   # Hugging Face 数据集名  建议格式：<your_hf_username>/<dataset_name>

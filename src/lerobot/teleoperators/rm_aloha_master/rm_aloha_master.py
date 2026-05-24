@@ -119,7 +119,7 @@ class RMAlohaMaster(Teleoperator):
             field_hex = encoded[start:end]
             raw_value = int.from_bytes(bytearray.fromhex(field_hex), byteorder="little", signed=True)
             if joint_name == "gripper":
-                values.append(float(raw_value))
+                values.append(raw_value / self.config.gripper_scale)
             else:
                 values.append(raw_value / self.config.joint_scale)
         return values

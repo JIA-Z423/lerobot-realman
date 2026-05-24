@@ -58,7 +58,7 @@ class RealManClientConfig:
     arm_model: int = 65
     joint_scale: float = 1000.0
     has_gripper: bool = True
-    gripper_scale: float = 1.0
+    gripper_scale: float = 1000.0
     gripper_open_value: int = 1000
     gripper_speed: int = 500
     initialize_gripper_route: bool = True

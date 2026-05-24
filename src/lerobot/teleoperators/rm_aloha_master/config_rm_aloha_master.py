@@ -41,6 +41,7 @@ class RMAlohaMasterBaseConfig:
         "gripper",
     )
     joint_scale: float = 10000.0
+    gripper_scale: float = 1000.0
 
 
 @TeleoperatorConfig.register_subclass("rm_aloha_master")
