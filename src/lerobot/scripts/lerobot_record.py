@@ -119,34 +119,34 @@ from lerobot.robots import (  # noqa: F401
     RobotConfig,
     bi_openarm_follower,
     bi_so_follower,
+    double_realman_follower,
     earthrover_mini_plus,
     hope_jr,
     koch_follower,
     make_robot_from_config,
     omx_follower,
     openarm_follower,
-    realman_follower,
     reachy2,
+    realman_follower,
     so_follower,
     unitree_g1 as unitree_g1_robot,
-    double_realman_follower,
 )
 from lerobot.teleoperators import (  # noqa: F401
     Teleoperator,
     TeleoperatorConfig,
     bi_openarm_leader,
     bi_so_leader,
+    double_rm_aloha_master,
     homunculus,
     koch_leader,
     make_teleoperator_from_config,
     omx_leader,
     openarm_leader,
     openarm_mini,
-    rm_aloha_master,
     reachy2_teleoperator,
+    rm_aloha_master,
     so_leader,
     unitree_g1,
-    double_rm_aloha_master,
 )
 from lerobot.teleoperators.keyboard import KeyboardTeleop
 from lerobot.utils.constants import ACTION, OBS_STR
@@ -266,6 +266,29 @@ class RecordConfig:
     def __get_path_fields__(cls) -> list[str]:
         """This enables the parser to load config from the policy using `--policy.path=local/dir`"""
         return ["policy"]
+
+
+def _validate_passive_recording_action_features(
+    robot: Robot, teleop: Teleoperator | list[Teleoperator]
+) -> None:
+    """Ensure passive teleop actions can be written into the robot action schema."""
+    robot_action_keys = set(robot.action_features)
+    if isinstance(teleop, list):
+        teleop_action_keys = set().union(*(t.action_features for t in teleop))
+    else:
+        teleop_action_keys = set(teleop.action_features)
+
+    if robot_action_keys == teleop_action_keys:
+        return
+
+    missing_from_teleop = sorted(robot_action_keys - teleop_action_keys)
+    extra_from_teleop = sorted(teleop_action_keys - robot_action_keys)
+    raise ValueError(
+        "`passive_recording=true` requires teleoperator action features to match robot action "
+        "features exactly, because the dataset action schema is derived from the robot. "
+        f"Missing from teleoperator: {missing_from_teleop}. "
+        f"Extra from teleoperator: {extra_from_teleop}."
+    )
 
 
 """ --------------- record_loop() data flow --------------------------
@@ -516,6 +539,9 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
     teleop = make_teleoperator_from_config(cfg.teleop) if cfg.teleop is not None else None
 
     teleop_action_processor, robot_action_processor, robot_observation_processor = make_default_processors()
+
+    if cfg.passive_recording and teleop is not None:
+        _validate_passive_recording_action_features(robot, teleop)
 
     dataset_features = combine_feature_dicts(
         aggregate_pipeline_dataset_features(

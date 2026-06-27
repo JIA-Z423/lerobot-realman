@@ -49,6 +49,48 @@ def test_socket_client_scales_gripper_command():
     ]
 
 
+def test_socket_client_reports_required_gripper_read_failures():
+    client = RealManSocketClient(
+        RealManClientConfig(host="127.0.0.1", has_gripper=True, gripper_scale=1000.0)
+    )
+
+    def fail_read(payload, expected_key):
+        raise TimeoutError("no gripper response")
+
+    client._send_command_with_expected_key = fail_read
+
+    try:
+        client._read_gripper_value()
+    except RuntimeError as exc:
+        message = str(exc)
+        assert "gripper is required" in message
+        assert "get_gripper_state" in message
+        assert "no gripper response" in message
+    else:
+        raise AssertionError("Expected required gripper read failure")
+
+
+def test_socket_client_reports_required_gripper_write_failures():
+    client = RealManSocketClient(
+        RealManClientConfig(host="127.0.0.1", has_gripper=True, gripper_scale=1000.0)
+    )
+
+    def fail_send(payload):
+        raise TimeoutError("no gripper command response")
+
+    client._send_command = fail_send
+
+    try:
+        client.send_joint_positions({"gripper": 0.425})
+    except RuntimeError as exc:
+        message = str(exc)
+        assert "gripper is required" in message
+        assert "set_gripper_position" in message
+        assert "no gripper command response" in message
+    else:
+        raise AssertionError("Expected required gripper write failure")
+
+
 def test_socket_client_pops_newline_delimited_json_messages():
     client = RealManSocketClient(RealManClientConfig(host="127.0.0.1"))
     client._receive_buffer = '{"state":"moving"}\r\n{"joint":[1,2,3,4,5,6]}\r\n'
@@ -189,17 +231,17 @@ def test_rm_aloha_sdk_client_uses_factory_sdk_method_names():
             self.last_canfd = None
             self.last_gripper = None
 
-        def Get_Joint_Degree(self):
+        def Get_Joint_Degree(self):  # noqa: N802
             return 0, [1, 2, 3, 4, 5, 6, 999]
 
-        def Get_Gripper_State(self):
+        def Get_Gripper_State(self):  # noqa: N802
             return 0, GripperState()
 
-        def Movej_CANFD(self, joints, follow):
+        def Movej_CANFD(self, joints, follow):  # noqa: N802
             self.last_canfd = (joints, follow)
             return 0
 
-        def Set_Gripper_Position(self, position, block):
+        def Set_Gripper_Position(self, position, block):  # noqa: N802
             self.last_gripper = (position, block)
             return 0
 
@@ -226,3 +268,27 @@ def test_rm_aloha_sdk_client_uses_factory_sdk_method_names():
 
     assert arm.last_canfd == ([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], False)
     assert arm.last_gripper == (42, False)
+
+
+def test_rm_aloha_sdk_client_passes_configured_port_to_arm():
+    class FakeArm:
+        calls = []
+
+        def __init__(self, arm_model, host, port):
+            self.calls.append((arm_model, host, port))
+
+        def Arm_Socket_State(self):  # noqa: N802
+            return 0
+
+    class FakeSDK:
+        Arm = FakeArm
+
+    config = RealManClientConfig(host="127.0.0.1", port=9090, arm_model=65)
+    client = object.__new__(RealManAlohaSDKClient)
+    BaseRealManClient.__init__(client, config)
+    client._sdk = FakeSDK()
+    client._arm = None
+
+    client.connect()
+
+    assert FakeArm.calls == [(65, "127.0.0.1", 9090)]

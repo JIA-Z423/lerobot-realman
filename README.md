@@ -121,7 +121,7 @@ dataset:
   repo_id: local/realman_double_arm_dataset
   root: datasets/realman_double_arm_dataset
   num_episodes: 1
-  fps: 10
+  fps: 30
   episode_time_s: 8
   reset_time_s: 0
   streaming_encoding: false
@@ -144,7 +144,9 @@ teleop:
 - 相机序列号
 - 主手串口路径
 
-当前双臂夹爪默认启用，夹爪硬件行程按 `gripper_scale=1000.0` 缩放为 `0~1` 后写入动作和观测。
+当前双臂夹爪是正式采集 schema 的一部分，夹爪硬件行程按 `gripper_scale=1000.0` 缩放为 `0~1` 后写入动作和观测。默认数据为左右各 6 轴 + 夹爪，共 `14` 维 action/state。
+
+配置中的 `control_hz` 仅作为兼容字段保留；被动硬件遥操作模式下，LeRobot 不控制主从臂闭环，只按 `dataset.fps` 采样主手动作、从臂状态和相机帧。
 
 ## 5. 硬件检查
 
@@ -170,20 +172,27 @@ RealMan double-arm check passed.
 
 ```bash
 python examples/realman/check_realman_double_arm.py \
-  --skip-followers --skip-masters --skip-cameras \
+  --left-host=<left_arm_host> \
+  --right-host=<right_arm_host> \
+  --left-master-port=<left_master_serial_port> \
+  --right-master-port=<right_master_serial_port> \
+  --left-wrist-serial=<left_wrist_camera_serial> \
+  --right-wrist-serial=<right_wrist_camera_serial> \
   --benchmark-samples=50
 ```
+
+`--benchmark-samples` 会创建正式的双臂 robot、双主手 teleop 和相机对象，因此必须连接真实硬件；`--skip-*` 只用于跳过前置分项检查，不会跳过 benchmark 内部读取。
 
 其他常用检查：
 
 ```bash
 python examples/realman/check_realman_double_arm.py --skip-cameras
-python examples/realman/check_realman_double_arm.py --check-gripper
+python examples/realman/check_realman_double_arm.py --skip-gripper  # 仅用于临时分项排查
 ```
 
 ## 6. 数据采集
 
-默认配置为本地采集 `1` 个 episode，每个 episode `8` 秒，`10 FPS`，数据保存到：
+默认配置为本地采集 `1` 个 episode，每个 episode `8` 秒，`30 FPS`，数据保存到：
 
 ```bash
 datasets/realman_double_arm_dataset
@@ -227,10 +236,10 @@ python -m lerobot.scripts.lerobot_record \
 | `observation.images.left_wrist` | 左腕 RGB 视频 |
 | `observation.images.right_wrist` | 右腕 RGB 视频 |
 
-默认配置下，每个 8 秒 episode 约为 80 帧：
+默认配置下，每个 8 秒 episode 约为 240 帧：
 
 ```text
-8 秒 x 10 FPS = 80 帧
+8 秒 x 30 FPS = 240 帧
 ```
 
 数据目录通常包含：
@@ -317,8 +326,8 @@ conda run -n lerobot ffprobe \
 
 ## 11. 说明
 
-- 当前版本仅完成双臂、两路 `640x480` 腕部相机的`10 FPS`数据采集。
-- 机械臂和主手的只读循环速度可以超过 `30 Hz`。
+- 当前版本面向双臂、两路 `640x480` 腕部 RGB 相机和夹爪的 `30 FPS` 被动数据采集。
+- 机械臂和主手遥操作由硬件系统完成；LeRobot 只按 `dataset.fps` 同步读取主手、从臂和相机数据。
 - 默认关闭实时视频编码，先写入图片，episode 结束后再编码，采集帧率更稳定。
 - `30 FPS` 或实时编码的主要瓶颈通常在图像写入或视频编码。
 - GPU 或硬件编码可能提升采集速度，但需要在目标电脑上实际测试。

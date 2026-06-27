@@ -22,7 +22,12 @@ pytest.importorskip("datasets", reason="datasets is required (install lerobot[da
 pytest.importorskip("deepdiff", reason="deepdiff is required (install lerobot[hardware])")
 
 from lerobot.scripts.lerobot_calibrate import CalibrateConfig, calibrate
-from lerobot.scripts.lerobot_record import DatasetRecordConfig, RecordConfig, record
+from lerobot.scripts.lerobot_record import (
+    DatasetRecordConfig,
+    RecordConfig,
+    _validate_passive_recording_action_features,
+    record,
+)
 from lerobot.scripts.lerobot_replay import DatasetReplayConfig, ReplayConfig, replay
 from lerobot.scripts.lerobot_teleoperate import TeleoperateConfig, teleoperate
 from tests.fixtures.constants import DUMMY_REPO_ID
@@ -86,6 +91,24 @@ def test_record_and_resume(tmp_path):
     assert dataset.meta.total_episodes == dataset.num_episodes == 2
     assert dataset.meta.total_frames == dataset.num_frames == 6
     assert dataset.meta.total_tasks == 1
+
+
+def test_passive_recording_requires_matching_robot_and_teleop_action_features():
+    robot = MockRobotConfig(n_motors=3)
+    teleop = MockTeleopConfig(n_motors=2)
+
+    from lerobot.robots.utils import make_robot_from_config
+    from lerobot.teleoperators.utils import make_teleoperator_from_config
+
+    with pytest.raises(ValueError) as exc_info:
+        _validate_passive_recording_action_features(
+            make_robot_from_config(robot), make_teleoperator_from_config(teleop)
+        )
+
+    message = str(exc_info.value)
+    assert "passive_recording=true" in message
+    assert "Missing from teleoperator: ['motor_3.pos']" in message
+    assert "Extra from teleoperator: []" in message
 
 
 def test_record_and_replay(tmp_path):

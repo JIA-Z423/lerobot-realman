@@ -10,6 +10,8 @@ robot:
     sdk_backend: socket_json
     # sdk_backend: rm_aloha_sdk
     arm_model: 65
+    # Reserved for compatibility with active-control paths.
+    # Passive hardware teleoperation only reads master/follower/camera data; dataset.fps controls sampling.
     control_hz: 10
     joint_scale: 1000.0
     has_gripper: true
@@ -25,18 +27,22 @@ robot:
       #   width: 640
       #   height: 480
       #   fps: 30
+      #   use_depth: false
       wrist:
         type: intelrealsense
         serial_number_or_name: REPLACE_WITH_LEFT_WRIST_CAMERA_SERIAL
         width: 640
         height: 480
         fps: 30
+        use_depth: false
   right_arm_config:
     host: REPLACE_WITH_RIGHT_REALMAN_ARM_HOST
     port: 8080
     sdk_backend: socket_json
     # sdk_backend: rm_aloha_sdk
     arm_model: 65
+    # Reserved for compatibility with active-control paths.
+    # Passive hardware teleoperation only reads master/follower/camera data; dataset.fps controls sampling.
     control_hz: 10
     joint_scale: 1000.0
     has_gripper: true
@@ -52,6 +58,7 @@ robot:
         width: 640
         height: 480
         fps: 30
+        use_depth: false
 
 teleop:
   type: double_rm_aloha_master
@@ -79,7 +86,7 @@ dataset:
   # 当前采集任务描述，会写进数据集 task 字段。
   single_task: RealMan double-arm passive data collection
   num_episodes: 1             #总共采集的episode数量
-  fps: 10
+  fps: 30
   episode_time_s: 8          #每个episode的时间长度
   reset_time_s: 0             #任务重置时间
   root: datasets/realman_double_arm_dataset

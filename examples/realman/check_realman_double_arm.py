@@ -191,6 +191,7 @@ def check_camera(
                 width=width,
                 height=height,
                 fps=fps,
+                use_depth=False,
             )
         )
         camera.connect()
@@ -225,7 +226,7 @@ def benchmark_passive_loop(args: argparse.Namespace) -> bool:
             left_arm_config=RealManFollowerBaseConfig(
                 host=args.left_host,
                 port=args.arm_port,
-                has_gripper=args.check_gripper,
+                has_gripper=not args.skip_gripper,
                 gripper_scale=DEFAULT_GRIPPER_SCALE,
                 cameras={
                     "wrist": RealSenseCameraConfig(
@@ -233,13 +234,14 @@ def benchmark_passive_loop(args: argparse.Namespace) -> bool:
                         width=args.camera_width,
                         height=args.camera_height,
                         fps=args.camera_fps,
+                        use_depth=False,
                     )
                 },
             ),
             right_arm_config=RealManFollowerBaseConfig(
                 host=args.right_host,
                 port=args.arm_port,
-                has_gripper=args.check_gripper,
+                has_gripper=not args.skip_gripper,
                 gripper_scale=DEFAULT_GRIPPER_SCALE,
                 cameras={
                     "wrist": RealSenseCameraConfig(
@@ -247,6 +249,7 @@ def benchmark_passive_loop(args: argparse.Namespace) -> bool:
                         width=args.camera_width,
                         height=args.camera_height,
                         fps=args.camera_fps,
+                        use_depth=False,
                     )
                 },
             ),
@@ -309,7 +312,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--right-host", default="REPLACE_WITH_RIGHT_REALMAN_ARM_HOST")
     parser.add_argument("--arm-port", type=int, default=8080)
     parser.add_argument("--arm-timeout-s", type=float, default=2.0)
-    parser.add_argument("--check-gripper", action="store_true")
+    parser.add_argument("--skip-gripper", action="store_true")
+    parser.add_argument("--check-gripper", action="store_true", help=argparse.SUPPRESS)
 
     parser.add_argument("--left-master-port", default="REPLACE_WITH_LEFT_MASTER_SERIAL_PORT")
     parser.add_argument("--right-master-port", default="REPLACE_WITH_RIGHT_MASTER_SERIAL_PORT")
@@ -359,12 +363,12 @@ def main() -> None:
                 check_arm(
                     ArmEndpoint("left", args.left_host, args.arm_port),
                     timeout_s=args.arm_timeout_s,
-                    check_gripper=args.check_gripper,
+                    check_gripper=not args.skip_gripper,
                 ),
                 check_arm(
                     ArmEndpoint("right", args.right_host, args.arm_port),
                     timeout_s=args.arm_timeout_s,
-                    check_gripper=args.check_gripper,
+                    check_gripper=not args.skip_gripper,
                 ),
             ]
         )

@@ -21,7 +21,7 @@ import json
 import socket
 from dataclasses import asdict, dataclass
 from enum import Enum
-from typing import Any
+from typing import Any, NoReturn
 
 
 class RealManDeviceRole(str, Enum):
@@ -100,6 +100,18 @@ class BaseRealManClient:
         if feedback:
             raise NotImplementedError("Force feedback is not wired for the RealMan integration.")
 
+    def _raise_required_gripper_error(
+        self, operation: str, exc: BaseException | None = None
+    ) -> NoReturn:
+        message = (
+            "RealMan gripper is required by configuration (`has_gripper=True`) but "
+            f"`{operation}` failed. Check that the gripper hardware is connected and "
+            "the controller exposes the gripper interface."
+        )
+        if exc is None:
+            raise RuntimeError(message)
+        raise RuntimeError(f"{message} Original error: {exc}") from exc
+
 
 class PlaceholderRealManClient(BaseRealManClient):
     def _unavailable(self) -> RuntimeError:
@@ -143,13 +155,16 @@ class RealManSocketClient(BaseRealManClient):
 
     def configure(self) -> None:
         if self.config.has_gripper and self.config.initialize_gripper_route:
-            self._send_command(
-                {
-                    "command": "set_gripper_route",
-                    "min": 0,
-                    "max": self.config.gripper_open_value,
-                }
-            )
+            try:
+                self._send_command(
+                    {
+                        "command": "set_gripper_route",
+                        "min": 0,
+                        "max": self.config.gripper_open_value,
+                    }
+                )
+            except Exception as exc:
+                self._raise_required_gripper_error("set_gripper_route", exc)
 
     def get_joint_positions(self) -> dict[str, float]:
         joint_values = self._read_joint_values()
@@ -169,13 +184,16 @@ class RealManSocketClient(BaseRealManClient):
             )
 
         if self.config.has_gripper and "gripper" in positions:
-            self._send_command(
-                {
-                    "command": "set_gripper_position",
-                    "position": int(positions["gripper"] * self.config.gripper_scale),
-                    "block": False,
-                }
-            )
+            try:
+                self._send_command(
+                    {
+                        "command": "set_gripper_position",
+                        "position": int(positions["gripper"] * self.config.gripper_scale),
+                        "block": False,
+                    }
+                )
+            except Exception as exc:
+                self._raise_required_gripper_error("set_gripper_position", exc)
 
         return positions
 
@@ -192,12 +210,17 @@ class RealManSocketClient(BaseRealManClient):
         }
 
     def _read_gripper_value(self) -> float:
-        response = self._send_command_with_expected_key(
-            {"command": "get_gripper_state"}, expected_key="actpos"
-        )
+        try:
+            response = self._send_command_with_expected_key(
+                {"command": "get_gripper_state"}, expected_key="actpos"
+            )
+        except Exception as exc:
+            self._raise_required_gripper_error("get_gripper_state", exc)
         raw_value = response.get("actpos")
         if raw_value is None:
-            raise RuntimeError(f"Unexpected RealMan gripper response: {response}")
+            self._raise_required_gripper_error(
+                "get_gripper_state", RuntimeError(f"Unexpected RealMan gripper response: {response}")
+            )
         self._last_gripper_value = float(raw_value) / self.config.gripper_scale
         return self._last_gripper_value
 
@@ -281,15 +304,12 @@ class RealManSDKClient(BaseRealManClient):
         return self._robot, self._handle
 
     def _raise_sdk_error(self, action: str, result: Any) -> RuntimeError:
-        if isinstance(result, tuple) and result:
-            code = result[0]
-        else:
-            code = result
+        code = result[0] if isinstance(result, tuple) and result else result
         return RuntimeError(f"RealMan SDK call failed during `{action}` with result `{code}`.")
 
     def connect(self) -> None:
-        thread_mode = getattr(self._sdk, "rm_thread_mode_e").RM_TRIPLE_MODE_E
-        robot_cls = getattr(self._sdk, "RoboticArm")
+        thread_mode = self._sdk.rm_thread_mode_e.RM_TRIPLE_MODE_E
+        robot_cls = self._sdk.RoboticArm
         self._robot = robot_cls(thread_mode)
         port = 8080 if self.config.port is None else self.config.port
         self._handle = self._robot.rm_create_robot_arm(self.config.host, port)
@@ -339,7 +359,7 @@ class RealManSDKClient(BaseRealManClient):
             raise self._raise_sdk_error("rm_get_current_arm_joint", result)
         payload = result[1]
         values = payload.get("joint") if isinstance(payload, dict) else payload
-        if not isinstance(values, (list, tuple)):
+        if not isinstance(values, list | tuple):
             raise RuntimeError(f"Unexpected SDK joint payload: {payload}")
         ordered_joint_names = [name for name in self.config.joint_names if name != "gripper"]
         positions = dict(zip(ordered_joint_names, [float(value) for value in values], strict=False))
@@ -368,15 +388,19 @@ class RealManSDKClient(BaseRealManClient):
         robot, _ = self._require_connected()
         query = getattr(robot, "rm_get_gripper_state", None)
         if not callable(query):
-            return 0.0
+            self._raise_required_gripper_error("rm_get_gripper_state")
 
         result = query()
         if not isinstance(result, tuple) or len(result) < 2 or result[0] != 0:
-            raise self._raise_sdk_error("rm_get_gripper_state", result)
+            self._raise_required_gripper_error(
+                "rm_get_gripper_state", self._raise_sdk_error("rm_get_gripper_state", result)
+            )
         payload = result[1]
         raw_value = payload.get("actpos") if isinstance(payload, dict) else payload
         if raw_value is None:
-            return 0.0
+            self._raise_required_gripper_error(
+                "rm_get_gripper_state", RuntimeError(f"Unexpected RealMan gripper response: {payload}")
+            )
         return float(raw_value) / self.config.gripper_scale
 
     def _set_gripper_position(self, position: float) -> None:
@@ -391,8 +415,11 @@ class RealManSDKClient(BaseRealManClient):
                 else:
                     ok = result == 0 or result is None
                 if not ok:
-                    raise self._raise_sdk_error(method_name, result)
+                    self._raise_required_gripper_error(
+                        method_name, self._raise_sdk_error(method_name, result)
+                    )
                 return
+        self._raise_required_gripper_error("rm_set_gripper_position")
 
 
 class RealManAlohaSDKClient(BaseRealManClient):
@@ -415,8 +442,9 @@ class RealManAlohaSDKClient(BaseRealManClient):
         return result == 0 or result is None
 
     def connect(self) -> None:
-        arm_cls = getattr(self._sdk, "Arm")
-        self._arm = arm_cls(self.config.arm_model, self.config.host)
+        arm_cls = self._sdk.Arm
+        port = 8080 if self.config.port is None else self.config.port
+        self._arm = arm_cls(self.config.arm_model, self.config.host, port)
         state = self._arm.Arm_Socket_State()
         if not self._is_ok(state):
             raise self._raise_sdk_error("Arm_Socket_State", state)
@@ -438,14 +466,16 @@ class RealManAlohaSDKClient(BaseRealManClient):
             arm = self._require_connected()
             result = arm.Set_Gripper_Route(0, self.config.gripper_open_value, False)
             if not self._is_ok(result):
-                raise self._raise_sdk_error("Set_Gripper_Route", result)
+                self._raise_required_gripper_error(
+                    "Set_Gripper_Route", self._raise_sdk_error("Set_Gripper_Route", result)
+                )
 
     def get_joint_positions(self) -> dict[str, float]:
         arm = self._require_connected()
         result, values = arm.Get_Joint_Degree()
         if not self._is_ok(result):
             raise self._raise_sdk_error("Get_Joint_Degree", result)
-        if not isinstance(values, (list, tuple)):
+        if not isinstance(values, list | tuple):
             raise RuntimeError(f"Unexpected RealMan Aloha SDK joint payload: {values}")
 
         ordered_joint_names = [name for name in self.config.joint_names if name != "gripper"]
@@ -471,14 +501,18 @@ class RealManAlohaSDKClient(BaseRealManClient):
             target = int(positions["gripper"] * self.config.gripper_scale)
             result = arm.Set_Gripper_Position(target, False)
             if not self._is_ok(result):
-                raise self._raise_sdk_error("Set_Gripper_Position", result)
+                self._raise_required_gripper_error(
+                    "Set_Gripper_Position", self._raise_sdk_error("Set_Gripper_Position", result)
+                )
         return positions
 
     def _get_gripper_position(self) -> float:
         arm = self._require_connected()
         result, state = arm.Get_Gripper_State()
         if not self._is_ok(result):
-            raise self._raise_sdk_error("Get_Gripper_State", result)
+            self._raise_required_gripper_error(
+                "Get_Gripper_State", self._raise_sdk_error("Get_Gripper_State", result)
+            )
         return float(state.actpos) / self.config.gripper_scale
 
 
