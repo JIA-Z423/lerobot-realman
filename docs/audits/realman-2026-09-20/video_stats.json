@@ -1,0 +1,50 @@
+[
+  {
+    "path": "datasets/realman_double_arm_dataset/videos/observation.images.left_wrist/chunk-000/file-000.mp4",
+    "codec": "h264",
+    "fps": 10.0,
+    "duration_s": 8.0,
+    "header_frames": 80,
+    "decoded_frames": 80
+  },
+  {
+    "path": "datasets/realman_double_arm_dataset/videos/observation.images.right_wrist/chunk-000/file-000.mp4",
+    "codec": "h264",
+    "fps": 10.0,
+    "duration_s": 8.0,
+    "header_frames": 80,
+    "decoded_frames": 80
+  },
+  {
+    "path": "datasets/realman_double_arm_dataset1/videos/observation.images.left_wrist/chunk-000/file-000.mp4",
+    "codec": "h264",
+    "fps": 15.0,
+    "duration_s": 8.0,
+    "header_frames": 120,
+    "decoded_frames": 120
+  },
+  {
+    "path": "datasets/realman_double_arm_dataset1/videos/observation.images.right_wrist/chunk-000/file-000.mp4",
+    "codec": "h264",
+    "fps": 15.0,
+    "duration_s": 8.0,
+    "header_frames": 120,
+    "decoded_frames": 120
+  },
+  {
+    "path": "datasets/realman_double_arm_dataset2/videos/observation.images.left_wrist/chunk-000/file-000.mp4",
+    "codec": "h264",
+    "fps": 30.0,
+    "duration_s": 7.8,
+    "header_frames": 234,
+    "decoded_frames": 234
+  },
+  {
+    "path": "datasets/realman_double_arm_dataset2/videos/observation.images.right_wrist/chunk-000/file-000.mp4",
+    "codec": "h264",
+    "fps": 30.0,
+    "duration_s": 7.8,
+    "header_frames": 234,
+    "decoded_frames": 234
+  }
+]
