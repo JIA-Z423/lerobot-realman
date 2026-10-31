@@ -59,6 +59,13 @@ class RealManClientConfig:
     joint_scale: float = 1000.0
     has_gripper: bool = True
     gripper_scale: float = 1000.0
+    gripper_state_position_key: str = "actpos"
+    gripper_position_register: int | None = None
+    gripper_modbus_port: int = 1
+    gripper_modbus_device: int = 1
+    gripper_modbus_baudrate: int = 115200
+    gripper_modbus_timeout: int = 2
+    initialize_gripper_modbus: bool = False
     gripper_open_value: int = 1000
     gripper_speed: int = 500
     initialize_gripper_route: bool = True
@@ -100,9 +107,7 @@ class BaseRealManClient:
         if feedback:
             raise NotImplementedError("Force feedback is not wired for the RealMan integration.")
 
-    def _raise_required_gripper_error(
-        self, operation: str, exc: BaseException | None = None
-    ) -> NoReturn:
+    def _raise_required_gripper_error(self, operation: str, exc: BaseException | None = None) -> NoReturn:
         message = (
             "RealMan gripper is required by configuration (`has_gripper=True`) but "
             f"`{operation}` failed. Check that the gripper hardware is connected and "
@@ -111,6 +116,28 @@ class BaseRealManClient:
         if exc is None:
             raise RuntimeError(message)
         raise RuntimeError(f"{message} Original error: {exc}") from exc
+
+    def _get_gripper_state_position(self, payload: Any, operation: str) -> float:
+        key = self.config.gripper_state_position_key
+        if isinstance(payload, dict):
+            raw_value = payload.get(key)
+            available = ", ".join(sorted(payload))
+        elif isinstance(payload, int | float):
+            raw_value = payload
+            available = "scalar"
+        else:
+            raw_value = getattr(payload, key, None)
+            available = ", ".join(name for name in dir(payload) if not name.startswith("_"))
+
+        if raw_value is None:
+            self._raise_required_gripper_error(
+                operation,
+                RuntimeError(
+                    f"Gripper state field {key!r} was not found in response {payload!r}. "
+                    f"Available fields: {available or 'none'}"
+                ),
+            )
+        return float(raw_value) / self.config.gripper_scale
 
 
 class PlaceholderRealManClient(BaseRealManClient):
@@ -154,6 +181,22 @@ class RealManSocketClient(BaseRealManClient):
         self._is_connected = False
 
     def configure(self) -> None:
+        if (
+            self.config.has_gripper
+            and self.config.gripper_position_register is not None
+            and self.config.initialize_gripper_modbus
+        ):
+            try:
+                self._send_command(
+                    {
+                        "command": "set_modbus_mode",
+                        "port": self.config.gripper_modbus_port,
+                        "baudrate": self.config.gripper_modbus_baudrate,
+                        "timeout": self.config.gripper_modbus_timeout,
+                    }
+                )
+            except Exception as exc:
+                self._raise_required_gripper_error("set_modbus_mode", exc)
         if self.config.has_gripper and self.config.initialize_gripper_route:
             try:
                 self._send_command(
@@ -210,18 +253,48 @@ class RealManSocketClient(BaseRealManClient):
         }
 
     def _read_gripper_value(self) -> float:
+        if self.config.gripper_position_register is not None:
+            return self._read_gripper_register_position()
         try:
             response = self._send_command_with_expected_key(
-                {"command": "get_gripper_state"}, expected_key="actpos"
+                {"command": "get_gripper_state"}, expected_key=self.config.gripper_state_position_key
             )
         except Exception as exc:
             self._raise_required_gripper_error("get_gripper_state", exc)
-        raw_value = response.get("actpos")
-        if raw_value is None:
+        self._last_gripper_value = self._get_gripper_state_position(response, "get_gripper_state")
+        return self._last_gripper_value
+
+    def _read_gripper_register_position(self) -> float:
+        address = self.config.gripper_position_register
+        if address is None:
+            raise RuntimeError("Gripper position register is not configured.")
+
+        values: list[int] = []
+        try:
+            for register_address in (address, address + 1):
+                response = self._send_command_with_expected_key(
+                    {
+                        "command": "read_holding_registers",
+                        "port": self.config.gripper_modbus_port,
+                        "address": register_address,
+                        "device": self.config.gripper_modbus_device,
+                    },
+                    expected_key="data",
+                )
+                raw_value = response.get("data")
+                if not isinstance(raw_value, int | float):
+                    raise RuntimeError(
+                        f"Unexpected holding-register response for 0x{register_address:04X}: {response}"
+                    )
+                values.append(int(raw_value) & 0xFFFF)
+        except Exception as exc:
             self._raise_required_gripper_error(
-                "get_gripper_state", RuntimeError(f"Unexpected RealMan gripper response: {response}")
+                f"read_holding_registers(0x{address:04X}-0x{address + 1:04X})", exc
             )
-        self._last_gripper_value = float(raw_value) / self.config.gripper_scale
+
+        high, low = values
+        raw_position = (high << 16) + low
+        self._last_gripper_value = raw_position / self.config.gripper_scale
         return self._last_gripper_value
 
     def _send_command_with_expected_key(
@@ -396,12 +469,7 @@ class RealManSDKClient(BaseRealManClient):
                 "rm_get_gripper_state", self._raise_sdk_error("rm_get_gripper_state", result)
             )
         payload = result[1]
-        raw_value = payload.get("actpos") if isinstance(payload, dict) else payload
-        if raw_value is None:
-            self._raise_required_gripper_error(
-                "rm_get_gripper_state", RuntimeError(f"Unexpected RealMan gripper response: {payload}")
-            )
-        return float(raw_value) / self.config.gripper_scale
+        return self._get_gripper_state_position(payload, "rm_get_gripper_state")
 
     def _set_gripper_position(self, position: float) -> None:
         robot, _ = self._require_connected()
@@ -479,10 +547,7 @@ class RealManAlohaSDKClient(BaseRealManClient):
             raise RuntimeError(f"Unexpected RealMan Aloha SDK joint payload: {values}")
 
         ordered_joint_names = [name for name in self.config.joint_names if name != "gripper"]
-        positions = {
-            name: float(value)
-            for name, value in zip(ordered_joint_names, values, strict=False)
-        }
+        positions = {name: float(value) for name, value in zip(ordered_joint_names, values, strict=False)}
         if "gripper" in self.config.joint_names:
             positions["gripper"] = 0.0 if not self.config.has_gripper else self._get_gripper_position()
         return positions
@@ -513,7 +578,7 @@ class RealManAlohaSDKClient(BaseRealManClient):
             self._raise_required_gripper_error(
                 "Get_Gripper_State", self._raise_sdk_error("Get_Gripper_State", result)
             )
-        return float(state.actpos) / self.config.gripper_scale
+        return self._get_gripper_state_position(state, "Get_Gripper_State")
 
 
 def make_realman_client(config: RealManClientConfig) -> BaseRealManClient:

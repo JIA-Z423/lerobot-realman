@@ -44,6 +44,13 @@ class RealManFollowerBaseConfig:
     joint_scale: float = 1000.0
     has_gripper: bool = True
     gripper_scale: float = 1000.0
+    gripper_state_position_key: str = "actpos"
+    gripper_position_register: int | None = None
+    gripper_modbus_port: int = 1
+    gripper_modbus_device: int = 1
+    gripper_modbus_baudrate: int = 115200
+    gripper_modbus_timeout: int = 2
+    initialize_gripper_modbus: bool = False
     gripper_open_value: int = 1000
     gripper_speed: int = 500
     initialize_gripper_route: bool = True

@@ -16,8 +16,9 @@
 
 """Hardware smoke check for the RealMan double-arm passive recording setup.
 
-This script only reads state from the robot arms, master arms, and cameras. It
-does not send joint targets and it does not modify the YAML configuration.
+By default this script only reads state from the robot arms, master arms, and
+cameras. If `--initialize-gripper-route` is passed, it also sends the RealMan
+gripper route initialization command used by the reference project.
 """
 
 from __future__ import annotations
@@ -87,7 +88,17 @@ def _request_json(
                     return response, time.perf_counter() - start
 
 
-def check_arm(endpoint: ArmEndpoint, *, timeout_s: float, check_gripper: bool) -> bool:
+def check_arm(
+    endpoint: ArmEndpoint,
+    *,
+    timeout_s: float,
+    check_gripper: bool,
+    gripper_state_position_key: str,
+    initialize_gripper_route: bool,
+    gripper_open_value: int,
+    gripper_samples: int,
+    gripper_interval_s: float,
+) -> bool:
     ok = True
     print(f"\n[{endpoint.name} follower] {endpoint.host}:{endpoint.port}")
     try:
@@ -109,20 +120,39 @@ def check_arm(endpoint: ArmEndpoint, *, timeout_s: float, check_gripper: bool) -
 
     if check_gripper:
         try:
-            response, elapsed_s = _request_json(
-                endpoint,
-                {"command": "get_gripper_state"},
-                timeout_s=timeout_s,
-                expected_key="actpos",
-            )
-            raw_actpos = response.get("actpos")
-            if raw_actpos is None:
-                raise RuntimeError(f"unexpected gripper response: {response}")
-            scaled_actpos = float(raw_actpos) / DEFAULT_GRIPPER_SCALE
-            print(
-                f"  get_gripper_state: ok, {elapsed_s * 1000:.1f} ms, "
-                f"raw actpos={raw_actpos}, scaled={scaled_actpos}"
-            )
+            if initialize_gripper_route:
+                route_response, elapsed_s = _request_json(
+                    endpoint,
+                    {"command": "set_gripper_route", "min": 0, "max": gripper_open_value},
+                    timeout_s=timeout_s,
+                )
+                print(f"  set_gripper_route: ok, {elapsed_s * 1000:.1f} ms, response={route_response}")
+
+            samples = max(gripper_samples, 1)
+            for sample_idx in range(samples):
+                response, elapsed_s = _request_json(
+                    endpoint,
+                    {"command": "get_gripper_state"},
+                    timeout_s=timeout_s,
+                    expected_key=gripper_state_position_key,
+                )
+                raw_actpos = response.get("actpos")
+                raw_position = response.get(gripper_state_position_key)
+                if raw_position is None:
+                    raise RuntimeError(
+                        f"gripper response does not contain {gripper_state_position_key!r}: {response}"
+                    )
+                scaled_position = float(raw_position) / DEFAULT_GRIPPER_SCALE
+                print(
+                    f"  get_gripper_state[{sample_idx}]: ok, {elapsed_s * 1000:.1f} ms, "
+                    f"raw actpos={raw_actpos}, "
+                    f"{gripper_state_position_key}={raw_position}, scaled={scaled_position}, "
+                    f"enable={response.get('enable')}, status={response.get('status')}, "
+                    f"mode={response.get('mode')}, current_force={response.get('current_force')}, "
+                    f"response={response}"
+                )
+                if sample_idx < samples - 1:
+                    time.sleep(gripper_interval_s)
         except Exception as exc:
             ok = False
             print(f"  get_gripper_state: FAILED: {exc}")
@@ -228,6 +258,9 @@ def benchmark_passive_loop(args: argparse.Namespace) -> bool:
                 port=args.arm_port,
                 has_gripper=not args.skip_gripper,
                 gripper_scale=DEFAULT_GRIPPER_SCALE,
+                gripper_state_position_key=args.gripper_state_position_key,
+                gripper_open_value=args.gripper_open_value,
+                initialize_gripper_route=args.initialize_gripper_route,
                 cameras={
                     "wrist": RealSenseCameraConfig(
                         serial_number_or_name=args.left_wrist_serial,
@@ -243,6 +276,9 @@ def benchmark_passive_loop(args: argparse.Namespace) -> bool:
                 port=args.arm_port,
                 has_gripper=not args.skip_gripper,
                 gripper_scale=DEFAULT_GRIPPER_SCALE,
+                gripper_state_position_key=args.gripper_state_position_key,
+                gripper_open_value=args.gripper_open_value,
+                initialize_gripper_route=args.initialize_gripper_route,
                 cameras={
                     "wrist": RealSenseCameraConfig(
                         serial_number_or_name=args.right_wrist_serial,
@@ -314,6 +350,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--arm-timeout-s", type=float, default=2.0)
     parser.add_argument("--skip-gripper", action="store_true")
     parser.add_argument("--check-gripper", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--initialize-gripper-route", action="store_true")
+    parser.add_argument("--gripper-open-value", type=int, default=1000)
+    parser.add_argument("--gripper-samples", type=int, default=1)
+    parser.add_argument("--gripper-interval-s", type=float, default=0.2)
+    parser.add_argument(
+        "--gripper-state-position-key",
+        default="actpos",
+        help="Field from get_gripper_state to use as gripper position.",
+    )
 
     parser.add_argument("--left-master-port", default="REPLACE_WITH_LEFT_MASTER_SERIAL_PORT")
     parser.add_argument("--right-master-port", default="REPLACE_WITH_RIGHT_MASTER_SERIAL_PORT")
@@ -364,11 +409,21 @@ def main() -> None:
                     ArmEndpoint("left", args.left_host, args.arm_port),
                     timeout_s=args.arm_timeout_s,
                     check_gripper=not args.skip_gripper,
+                    gripper_state_position_key=args.gripper_state_position_key,
+                    initialize_gripper_route=args.initialize_gripper_route,
+                    gripper_open_value=args.gripper_open_value,
+                    gripper_samples=args.gripper_samples,
+                    gripper_interval_s=args.gripper_interval_s,
                 ),
                 check_arm(
                     ArmEndpoint("right", args.right_host, args.arm_port),
                     timeout_s=args.arm_timeout_s,
                     check_gripper=not args.skip_gripper,
+                    gripper_state_position_key=args.gripper_state_position_key,
+                    initialize_gripper_route=args.initialize_gripper_route,
+                    gripper_open_value=args.gripper_open_value,
+                    gripper_samples=args.gripper_samples,
+                    gripper_interval_s=args.gripper_interval_s,
                 ),
             ]
         )

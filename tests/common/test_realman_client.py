@@ -34,6 +34,80 @@ def test_socket_client_scales_gripper_state():
     assert client._read_gripper_value() == 0.425
 
 
+def test_socket_client_uses_configured_gripper_state_field():
+    client = RealManSocketClient(
+        RealManClientConfig(
+            host="127.0.0.1",
+            has_gripper=True,
+            gripper_scale=1000.0,
+            gripper_state_position_key="position",
+        )
+    )
+    client._send_command_with_expected_key = lambda payload, expected_key: {
+        "actpos": 0,
+        "position": 425,
+    }
+
+    assert client._read_gripper_value() == 0.425
+
+
+def test_socket_client_reads_gripper_position_from_feedback_registers():
+    client = RealManSocketClient(
+        RealManClientConfig(
+            host="127.0.0.1",
+            gripper_scale=1000.0,
+            gripper_position_register=0x0609,
+            gripper_modbus_port=1,
+            gripper_modbus_device=1,
+        )
+    )
+    requests = []
+
+    def read_register(payload, expected_key):
+        requests.append((payload, expected_key))
+        return {"data": {0x0609: 0x0001, 0x060A: 0x86A0}[payload["address"]]}
+
+    client._send_command_with_expected_key = read_register
+
+    assert client._read_gripper_value() == 100.0
+    assert [request[0]["address"] for request in requests] == [0x0609, 0x060A]
+    assert all(request[1] == "data" for request in requests)
+
+
+def test_socket_client_initializes_modbus_for_register_feedback():
+    client = RealManSocketClient(
+        RealManClientConfig(
+            host="127.0.0.1",
+            gripper_position_register=0x0609,
+            initialize_gripper_modbus=True,
+            initialize_gripper_route=False,
+        )
+    )
+    sent_payloads = []
+    client._send_command = sent_payloads.append
+
+    client.configure()
+
+    assert sent_payloads == [{"command": "set_modbus_mode", "port": 1, "baudrate": 115200, "timeout": 2}]
+
+
+def test_socket_client_does_not_reconfigure_hardware_initialized_gripper():
+    client = RealManSocketClient(
+        RealManClientConfig(
+            host="127.0.0.1",
+            gripper_position_register=0x0609,
+            initialize_gripper_modbus=False,
+            initialize_gripper_route=False,
+        )
+    )
+    sent_payloads = []
+    client._send_command = sent_payloads.append
+
+    client.configure()
+
+    assert sent_payloads == []
+
+
 def test_socket_client_scales_gripper_command():
     sent_payloads = []
 
@@ -44,9 +118,7 @@ def test_socket_client_scales_gripper_command():
 
     client.send_joint_positions({"gripper": 0.425})
 
-    assert sent_payloads == [
-        {"command": "set_gripper_position", "position": 425, "block": False}
-    ]
+    assert sent_payloads == [{"command": "set_gripper_position", "position": 425, "block": False}]
 
 
 def test_socket_client_reports_required_gripper_read_failures():
@@ -268,6 +340,33 @@ def test_rm_aloha_sdk_client_uses_factory_sdk_method_names():
 
     assert arm.last_canfd == ([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], False)
     assert arm.last_gripper == (42, False)
+
+
+def test_rm_aloha_sdk_client_uses_configured_gripper_state_field():
+    class GripperState:
+        actpos = 0
+        position = 456
+
+    class FakeArm:
+        def Get_Joint_Degree(self):  # noqa: N802
+            return 0, [1, 2, 3, 4, 5, 6, 999]
+
+        def Get_Gripper_State(self):  # noqa: N802
+            return 0, GripperState()
+
+    config = RealManClientConfig(
+        host="127.0.0.1",
+        has_gripper=True,
+        gripper_scale=1000.0,
+        gripper_state_position_key="position",
+    )
+    arm = FakeArm()
+    client = object.__new__(RealManAlohaSDKClient)
+    BaseRealManClient.__init__(client, config)
+    client._arm = arm
+    client._is_connected = True
+
+    assert client.get_joint_positions()["gripper"] == 0.456
 
 
 def test_rm_aloha_sdk_client_passes_configured_port_to_arm():

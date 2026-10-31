@@ -12,10 +12,11 @@ robot:
     arm_model: 65
     # Reserved for compatibility with active-control paths.
     # Passive hardware teleoperation only reads master/follower/camera data; dataset.fps controls sampling.
-    control_hz: 10
+    # control_hz: 10
     joint_scale: 1000.0
     has_gripper: true
     gripper_scale: 1000.0
+    gripper_state_position_key: actpos
     gripper_open_value: 1000
     gripper_speed: 500
     initialize_gripper_route: true
@@ -43,10 +44,11 @@ robot:
     arm_model: 65
     # Reserved for compatibility with active-control paths.
     # Passive hardware teleoperation only reads master/follower/camera data; dataset.fps controls sampling.
-    control_hz: 10
+    # control_hz: 10
     joint_scale: 1000.0
     has_gripper: true
     gripper_scale: 1000.0
+    gripper_state_position_key: actpos
     gripper_open_value: 1000
     gripper_speed: 500
     initialize_gripper_route: true

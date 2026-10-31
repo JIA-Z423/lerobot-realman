@@ -182,6 +182,9 @@ rm_aloha_v1/aloha_model_ckpt/
 configs/hardware/*.local.yaml
 configs/hardware/*_local.yaml
 
+# Local command cheat sheets
+LEROBOT_COMMANDS.md
+
 # Local agent/tooling state
 .agents/
 .codex
