@@ -16,10 +16,12 @@ robot:
     joint_scale: 1000.0
     has_gripper: true
     gripper_scale: 1000.0
-    gripper_state_position_key: actpos
+    # 本项目 CTAG2F120 使用已开启的 RM_ARM+ 反馈；不在 LeRobot 中切换硬件协议。
+    gripper_feedback_source: rm_plus
     gripper_open_value: 1000
     gripper_speed: 500
-    initialize_gripper_route: true
+    # Passive recording must not initialize the gripper route or Modbus, or calibrate hardware.
+    initialize_gripper_route: false
     move_command: movej_canfd
     cameras:
       # top:
@@ -48,10 +50,11 @@ robot:
     joint_scale: 1000.0
     has_gripper: true
     gripper_scale: 1000.0
-    gripper_state_position_key: actpos
+    gripper_feedback_source: rm_plus
     gripper_open_value: 1000
     gripper_speed: 500
-    initialize_gripper_route: true
+    # Passive recording must not initialize the gripper route or Modbus, or calibrate hardware.
+    initialize_gripper_route: false
     move_command: movej_canfd
     cameras:
       wrist:

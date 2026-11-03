@@ -12,6 +12,8 @@
 
 默认使用被动采集模式。机械臂由外部 RealMan 或厂家控制系统驱动，LeRobot 只负责同步记录数据，不主动下发机械臂控制命令。
 
+2026-11-02 已验证 CTAG2F120 的 RM_ARM+ 位置反馈和真实采集落盘；用户确认两侧实际张开，按授权关闭后反馈均回到 0。旧原生 `actpos` 在张开时仍为 0，当前配置应继续使用生态反馈。配置、检查方法、相机状态和验收限制统一见 [RealMan 采集检查与夹爪反馈说明](docs/realman_data_collection_check.md)。采集前可使用 [夹爪实时监视器](examples/realman/watch_realman_gripper.py)预检。
+
 ## 1. 项目说明
 
 上游项目：
@@ -19,7 +21,7 @@
 - LeRobot: <https://github.com/huggingface/lerobot>
 - LeRobot 文档: <https://huggingface.co/docs/lerobot>
 
-本项目中的 `rm_aloha_v1/` 为睿尔曼公司提供的双臂配套项目代码，主要用于参考厂家原始通信方式、主手协议和 RealMan ALOHA 使用流程。
+睿尔曼公司提供的双臂配套项目代码已移出本仓库；本机参考副本位于同级目录 `../rm_aloha_v1/`，主要用于参考厂家原始通信方式、主手协议和 RealMan ALOHA 使用流程。
 
 当前 LeRobot 集成代码主要包括：
 
@@ -27,6 +29,7 @@
 | --- | --- |
 | `configs/hardware/realman_double_arm_hardware_config.yaml` | 双臂采集配置文件 |
 | `examples/realman/check_realman_double_arm.py` | 双臂硬件检查脚本 |
+| `examples/realman/check_realman_readonly.py` | 有命令白名单的只读状态检查，保留 JSON 原始回包 |
 | `src/lerobot/robots/realman_follower/` | 单个 RealMan 从臂封装 |
 | `src/lerobot/robots/double_realman_follower/` | RealMan 双从臂封装 |
 | `src/lerobot/teleoperators/rm_aloha_master/` | 单个 RM ALOHA 主手封装 |
@@ -44,7 +47,7 @@
 | `datasets/` | 本地采集数据，默认不提交 |
 | `outputs/` | 训练、评估和运行输出，默认不提交 |
 | `visualizations/` | Rerun 可视化导出文件，默认不提交 |
-| `rm_aloha_v1/` | 睿尔曼公司提供的配套项目代码 |
+| `../rm_aloha_v1/`（本机外部参考） | 睿尔曼公司提供的配套项目代码，不包含在本仓库中 |
 
 
 ## 1.2 版本管理说明
@@ -144,13 +147,24 @@ teleop:
 - 相机序列号
 - 主手串口路径
 
-当前双臂夹爪是正式采集 schema 的一部分，夹爪硬件行程按 `gripper_scale=1000.0` 缩放为 `0~1` 后写入动作和观测。默认数据为左右各 6 轴 + 夹爪，共 `14` 维 action/state。
+当前双臂夹爪是正式采集 schema 的一部分。公开模板和本地配置使用 `gripper_feedback_source: rm_plus`，读取 `get_rm_plus_state_info.state_info.pos[0]`，按 `gripper_scale=1000.0` 归一化；它不是毫米。默认数据为左右各 6 轴 + 夹爪，共 `14` 维 action/state。RM+ 适配当前只支持读取，发送动作会明确报错。普通原生夹爪可显式使用 `gripper_feedback_source: native`。
 
 配置中的 `control_hz` 仅作为兼容字段保留；被动硬件遥操作模式下，LeRobot 不控制主从臂闭环，只按 `dataset.fps` 采样主手动作、从臂状态和相机帧。
 
 ## 5. 硬件检查
 
-运行完整检查：
+本机 RM_ARM+ 夹爪优先使用只读检查：
+
+```bash
+PYTHONPATH=src python examples/realman/check_realman_readonly.py \
+  --config-path configs/hardware/realman_double_arm_hardware_config.local.yaml \
+  --output /tmp/realman-readonly.json \
+  --skip-cameras
+```
+
+查看 JSON 中的 `followers.left.rm_plus`、`followers.right.rm_plus`。默认不探测普通 Modbus 寄存器，也不启用或切换协议；`--probe-modbus` 才会增加普通寄存器读数。脚本正常退出不等于所有设备正常，应检查各分项错误和状态。
+
+下面的旧检查脚本使用原生 `get_gripper_state`，适合原生夹爪，不能用于判定当前 RM_ARM+ 夹爪的健康状态：
 
 ```bash
 python examples/realman/check_realman_double_arm.py \

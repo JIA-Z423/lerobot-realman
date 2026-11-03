@@ -260,7 +260,9 @@ class RecordConfig:
         if self.passive_recording and self.teleop is None:
             raise ValueError("`passive_recording=true` requires a teleoperator to provide recorded actions.")
         if self.passive_recording and self.policy is not None:
-            raise ValueError("`passive_recording=true` is only supported for teleoperation recording, not policies.")
+            raise ValueError(
+                "`passive_recording=true` is only supported for teleoperation recording, not policies."
+            )
 
     @classmethod
     def __get_path_fields__(cls) -> list[str]:
@@ -289,6 +291,33 @@ def _validate_passive_recording_action_features(
         f"Missing from teleoperator: {missing_from_teleop}. "
         f"Extra from teleoperator: {extra_from_teleop}."
     )
+
+
+def _validate_realman_passive_recording_config(robot_config: RobotConfig) -> None:
+    """Reject RealMan initialization that writes device configuration during passive recording."""
+    if isinstance(robot_config, realman_follower.RealManFollowerConfig):
+        arm_configs = [("robot", robot_config)]
+    elif isinstance(robot_config, double_realman_follower.DoubleRealManFollowerConfig):
+        arm_configs = [
+            ("robot.left_arm_config", robot_config.left_arm_config),
+            ("robot.right_arm_config", robot_config.right_arm_config),
+        ]
+    else:
+        return
+
+    unsafe_options = [
+        f"{path}.{option}=true"
+        for path, arm_config in arm_configs
+        for option in ("initialize_gripper_route", "initialize_gripper_modbus", "enable_calibration")
+        if getattr(arm_config, option)
+    ]
+    if unsafe_options:
+        raise ValueError(
+            "`passive_recording=true` requires RealMan hardware initialization and calibration to be "
+            "disabled before connecting. Set these configuration options to false: "
+            + ", ".join(unsafe_options)
+            + ". No devices have been created or connected."
+        )
 
 
 """ --------------- record_loop() data flow --------------------------
@@ -525,6 +554,9 @@ def record_loop(
 
 @parser.wrap()
 def record(cfg: RecordConfig) -> LeRobotDataset:
+    if cfg.passive_recording:
+        _validate_realman_passive_recording_config(cfg.robot)
+
     init_logging()
     logging.info(pformat(asdict(cfg)))
     if cfg.display_data:

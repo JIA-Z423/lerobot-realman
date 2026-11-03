@@ -14,6 +14,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
+# RealMan 项目说明
+
+本机设备配置、夹爪恒零原因、实机验证结果和只读复查方式见 [RealMan 双臂采集检查与夹爪反馈说明](realman_data_collection_check.md)。
+
 # Generating the documentation
 
 To generate the documentation, you first have to build it. Several packages are necessary to build the doc,

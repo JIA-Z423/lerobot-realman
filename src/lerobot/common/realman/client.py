@@ -18,18 +18,19 @@ from __future__ import annotations
 
 import importlib
 import json
+import math
 import socket
 from dataclasses import asdict, dataclass
 from enum import Enum
 from typing import Any, NoReturn
 
 
-class RealManDeviceRole(str, Enum):
+class RealManDeviceRole(str, Enum):  # noqa: UP042 - Preserve the public Enum string representation.
     FOLLOWER = "follower"
     LEADER = "leader"
 
 
-class RealManControlMode(str, Enum):
+class RealManControlMode(str, Enum):  # noqa: UP042 - Preserve the public Enum string representation.
     JOINT_POSITION = "joint_position"
     CARTESIAN = "cartesian"
 
@@ -59,6 +60,7 @@ class RealManClientConfig:
     joint_scale: float = 1000.0
     has_gripper: bool = True
     gripper_scale: float = 1000.0
+    gripper_feedback_source: str = "native"
     gripper_state_position_key: str = "actpos"
     gripper_position_register: int | None = None
     gripper_modbus_port: int = 1
@@ -70,6 +72,32 @@ class RealManClientConfig:
     gripper_speed: int = 500
     initialize_gripper_route: bool = True
     move_command: str = "movej_canfd"
+
+    def __post_init__(self) -> None:
+        if self.gripper_feedback_source not in ("native", "rm_plus"):
+            raise ValueError("gripper_feedback_source must be 'native' or 'rm_plus'.")
+        if self.gripper_feedback_source == "rm_plus":
+            if self.sdk_backend not in (None, "socket_json"):
+                raise ValueError("rm_plus gripper feedback is only supported by the socket_json backend.")
+            if self.gripper_position_register is not None:
+                raise ValueError(
+                    "rm_plus gripper feedback cannot be combined with gripper_position_register."
+                )
+        for name in ("joint_scale", "gripper_scale"):
+            value = getattr(self, name)
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, int | float)
+                or not math.isfinite(value)
+                or value <= 0
+            ):
+                raise ValueError(f"{name} must be a positive finite number, got {value!r}.")
+        address = self.gripper_position_register
+        if address is not None:
+            if isinstance(address, bool) or not isinstance(address, int) or not 0 <= address <= 0xFFFD:
+                raise ValueError("gripper_position_register must be an integer between 0 and 65533.")
+            if self.sdk_backend not in (None, "socket_json"):
+                raise ValueError("gripper_position_register is only supported by the socket_json backend.")
 
 
 class BaseRealManClient:
@@ -118,6 +146,19 @@ class BaseRealManClient:
         raise RuntimeError(f"{message} Original error: {exc}") from exc
 
     def _get_gripper_state_position(self, payload: Any, operation: str) -> float:
+        for name, required_value in (("status", 1), ("error", 0)):
+            missing = object()
+            value = (
+                payload.get(name, missing) if isinstance(payload, dict) else getattr(payload, name, missing)
+            )
+            if value is not missing and value != required_value:
+                self._raise_required_gripper_error(
+                    operation,
+                    RuntimeError(
+                        f"Invalid gripper feedback: {name}={value!r} (expected {required_value}). "
+                        f"Position feedback is unavailable; response: {payload!r}"
+                    ),
+                )
         key = self.config.gripper_state_position_key
         if isinstance(payload, dict):
             raw_value = payload.get(key)
@@ -137,7 +178,20 @@ class BaseRealManClient:
                     f"Available fields: {available or 'none'}"
                 ),
             )
-        return float(raw_value) / self.config.gripper_scale
+        if (
+            isinstance(raw_value, bool)
+            or not isinstance(raw_value, int | float)
+            or not math.isfinite(raw_value)
+        ):
+            self._raise_required_gripper_error(
+                operation, RuntimeError(f"Gripper position must be a finite number, got {raw_value!r}.")
+            )
+        position = float(raw_value) / self.config.gripper_scale
+        if not math.isfinite(position):
+            self._raise_required_gripper_error(
+                operation, RuntimeError("Scaled gripper position is not finite.")
+            )
+        return position
 
 
 class PlaceholderRealManClient(BaseRealManClient):
@@ -181,6 +235,13 @@ class RealManSocketClient(BaseRealManClient):
         self._is_connected = False
 
     def configure(self) -> None:
+        if self.config.gripper_feedback_source == "rm_plus":
+            if self.config.initialize_gripper_route or self.config.initialize_gripper_modbus:
+                raise RuntimeError(
+                    "RM+ feedback support is read-only. Set initialize_gripper_route and "
+                    "initialize_gripper_modbus to false; no initialization commands were sent."
+                )
+            return
         if (
             self.config.has_gripper
             and self.config.gripper_position_register is not None
@@ -217,6 +278,11 @@ class RealManSocketClient(BaseRealManClient):
         return joint_values
 
     def send_joint_positions(self, positions: dict[str, float]) -> dict[str, float]:
+        if self.config.gripper_feedback_source == "rm_plus":
+            raise RuntimeError(
+                "RM+ feedback support is read-only; sending joint or gripper targets is not supported. "
+                "No commands were sent."
+            )
         ordered_joint_names = [name for name in self.config.joint_names if name != "gripper"]
         ordered_joint_targets = [positions[name] for name in ordered_joint_names if name in positions]
 
@@ -253,6 +319,8 @@ class RealManSocketClient(BaseRealManClient):
         }
 
     def _read_gripper_value(self) -> float:
+        if self.config.gripper_feedback_source == "rm_plus":
+            return self._read_rm_plus_gripper_position()
         if self.config.gripper_position_register is not None:
             return self._read_gripper_register_position()
         try:
@@ -264,37 +332,83 @@ class RealManSocketClient(BaseRealManClient):
         self._last_gripper_value = self._get_gripper_state_position(response, "get_gripper_state")
         return self._last_gripper_value
 
+    def _read_rm_plus_gripper_position(self) -> float:
+        operation = "get_rm_plus_state_info"
+        try:
+            response = self._send_command_with_expected_key({"command": operation}, expected_key="state_info")
+            state = response.get("state_info")
+            if not isinstance(state, dict):
+                raise RuntimeError(f"Expected RM+ state_info object: {response!r}")
+            if "sys_state" in state and state["sys_state"] != 0:
+                raise RuntimeError(f"RM+ feedback reports sys_state={state['sys_state']!r}: {response!r}")
+            # Firmware uses sys_err; some protocol documentation calls it sys_error.
+            if not any(name in state for name in ("sys_err", "sys_error")):
+                raise RuntimeError(f"Missing RM+ system error field (sys_err/sys_error): {response!r}")
+            for name in ("sys_err", "sys_error"):
+                if name in state and state[name] != 0:
+                    raise RuntimeError(f"RM+ feedback reports {name}={state[name]!r}: {response!r}")
+            errors = state.get("dof_err")
+            if not isinstance(errors, list) or len(errors) != 1 or errors[0] != 0:
+                raise RuntimeError(f"Expected one error-free RM+ gripper DOF: {response!r}")
+            positions = state.get("pos")
+            if not isinstance(positions, list) or len(positions) != 1:
+                raise RuntimeError(f"Expected one RM+ gripper position: {response!r}")
+            raw_position = positions[0]
+            if (
+                isinstance(raw_position, bool)
+                or not isinstance(raw_position, int | float)
+                or not math.isfinite(raw_position)
+            ):
+                raise RuntimeError(f"RM+ gripper position must be a finite number: {response!r}")
+            position = float(raw_position) / self.config.gripper_scale
+            if not math.isfinite(position):
+                raise RuntimeError(f"Scaled RM+ gripper position is not finite: {response!r}")
+        except Exception as exc:
+            self._raise_required_gripper_error(operation, exc)
+        self._last_gripper_value = position
+        return position
+
     def _read_gripper_register_position(self) -> float:
         address = self.config.gripper_position_register
         if address is None:
             raise RuntimeError("Gripper position register is not configured.")
 
-        values: list[int] = []
         try:
-            for register_address in (address, address + 1):
-                response = self._send_command_with_expected_key(
-                    {
-                        "command": "read_holding_registers",
-                        "port": self.config.gripper_modbus_port,
-                        "address": register_address,
-                        "device": self.config.gripper_modbus_device,
-                    },
-                    expected_key="data",
+            response = self._send_command_with_expected_key(
+                {
+                    "command": "read_multiple_holding_registers",
+                    "port": self.config.gripper_modbus_port,
+                    "address": address,
+                    # RM65 requires at least three registers per batch. The first
+                    # two contain the position; read and validate the third as well.
+                    "num": 3,
+                    "device": self.config.gripper_modbus_device,
+                },
+                expected_key="data",
+            )
+            data = response.get("data")
+            if (
+                not isinstance(data, list)
+                or len(data) != 6
+                or any(
+                    isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 255
+                    for value in data
                 )
-                raw_value = response.get("data")
-                if not isinstance(raw_value, int | float):
-                    raise RuntimeError(
-                        f"Unexpected holding-register response for 0x{register_address:04X}: {response}"
-                    )
-                values.append(int(raw_value) & 0xFFFF)
+            ):
+                raise RuntimeError(
+                    f"Expected six big-endian register bytes for 0x{address:04X}-0x{address + 2:04X}: "
+                    f"{response}"
+                )
+            raw_position = int.from_bytes(bytes(data[:4]), byteorder="big", signed=False)
+            position = raw_position / self.config.gripper_scale
+            if not math.isfinite(position):
+                raise RuntimeError("Scaled gripper register position is not finite.")
         except Exception as exc:
             self._raise_required_gripper_error(
-                f"read_holding_registers(0x{address:04X}-0x{address + 1:04X})", exc
+                f"read_multiple_holding_registers(0x{address:04X}-0x{address + 1:04X})", exc
             )
 
-        high, low = values
-        raw_position = (high << 16) + low
-        self._last_gripper_value = raw_position / self.config.gripper_scale
+        self._last_gripper_value = position
         return self._last_gripper_value
 
     def _send_command_with_expected_key(
@@ -309,6 +423,12 @@ class RealManSocketClient(BaseRealManClient):
         response: dict[str, Any] = {}
         for _ in range(max_attempts):
             response = self._read_response()
+            if "command" in response and response["command"] != payload.get("command"):
+                continue
+            if response.get("read_state") is False:
+                raise RuntimeError(f"RealMan read_state=false for payload {payload}: {response}")
+            if response.get("get_state") is False:
+                raise RuntimeError(f"RealMan get_state=false for payload {payload}: {response}")
             if expected_key in response:
                 return response
         raise RuntimeError(

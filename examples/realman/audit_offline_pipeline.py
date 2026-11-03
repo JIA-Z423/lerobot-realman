@@ -6,7 +6,9 @@ repository's installed Python environment; --output must be a new directory.
 
 import argparse
 import json
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 import pyarrow.parquet as pq
@@ -69,6 +71,20 @@ class FakeSocket:
             response = {"command": command, "enable": 1, "status": 0 if self.offline else 1, "error": 0}
             if not self.missing:
                 response["actpos"] = self.position
+        elif command == "read_multiple_holding_registers":
+            assert payload["address"] == 0x0609 and payload["num"] == 3
+            response = {"command": command, "data": [*self.position.to_bytes(4, "big"), 0x12, 0x34]}
+        elif command == "get_rm_plus_state_info":
+            response = {
+                "command": command,
+                "state_info": {
+                    "pos": [self.position],
+                    "sys_state": 0,
+                    "sys_err": 0,
+                    "dof_err": [0],
+                    "dof_state": [2],
+                },
+            }
         else:
             raise AssertionError(f"Unexpected control/config command: {payload}")
         self.pending = (json.dumps(response) + "\r\n").encode()
@@ -111,7 +127,9 @@ class FakeSerial:
         self.is_open = False
 
 
-def pipeline_case(output, name, has_gripper=True, scale=1000.0):
+def pipeline_case(
+    output, name, has_gripper=True, scale=1000.0, register_feedback=False, feedback_source="native"
+):
     from lerobot.datasets.lerobot_dataset import LeRobotDataset
     from lerobot.datasets.pipeline_features import (
         aggregate_pipeline_dataset_features,
@@ -132,12 +150,16 @@ def pipeline_case(output, name, has_gripper=True, scale=1000.0):
                 host="offline-left",
                 has_gripper=has_gripper,
                 gripper_scale=scale,
+                gripper_feedback_source=feedback_source,
+                gripper_position_register=0x0609 if register_feedback else None,
                 initialize_gripper_route=False,
             ),
             right_arm_config=RealManFollowerBaseConfig(
                 host="offline-right",
                 has_gripper=has_gripper,
                 gripper_scale=scale,
+                gripper_feedback_source=feedback_source,
+                gripper_position_register=0x0609 if register_feedback else None,
                 initialize_gripper_route=False,
             ),
         )
@@ -159,6 +181,10 @@ def pipeline_case(output, name, has_gripper=True, scale=1000.0):
         arm.client._is_connected = True
     for arm, value in zip([teleop.left_arm, teleop.right_arm], [123, 987], strict=True):
         arm.serial = FakeSerial(value)
+    # The real adapters create their pools during connect(). This audit injects
+    # simulated transports directly and never invokes hardware startup.
+    robot._executor = ThreadPoolExecutor(max_workers=2)
+    teleop._executor = ThreadPoolExecutor(max_workers=2)
     action_processor, robot_processor, observation_processor = make_default_processors()
     _validate_passive_recording_action_features(robot, teleop)
     features = combine_feature_dicts(
@@ -228,8 +254,15 @@ def pipeline_case(output, name, has_gripper=True, scale=1000.0):
             np.testing.assert_allclose(values, np.tile(expected[key], (3, 1)), rtol=1e-6)
             persisted[key] = values.tolist()
         requests = [[r["command"] for r in sock.requests] for sock in sockets]
-        assert all(set(r) <= {"get_joint_degree", "get_gripper_state"} for r in requests)
-        assert all(("get_gripper_state" in r) == has_gripper for r in requests)
+        feedback_command = (
+            "get_rm_plus_state_info"
+            if feedback_source == "rm_plus"
+            else "read_multiple_holding_registers"
+            if register_feedback
+            else "get_gripper_state"
+        )
+        assert all(set(r) <= {"get_joint_degree", feedback_command} for r in requests)
+        assert all((feedback_command in r) == has_gripper for r in requests)
         return {
             "case": name,
             "indices": indices,
@@ -255,12 +288,12 @@ def boundary_cases():
         client = RealManSocketClient(RealManClientConfig(host="offline"))
         client._socket, client._is_connected = transport, True
         try:
-            value = client.get_joint_positions()["gripper"]
-            assert name == "offline_status_zero" and value == 0
-            results.append({"case": name, "value": value, "finding": "status=0 is accepted"})
+            client.get_joint_positions()
+            raise AssertionError(f"Invalid feedback was accepted: {name}")
         except RuntimeError as exc:
-            assert name == "missing_actpos"
-            results.append({"case": name, "error": str(exc), "finding": "missing field raises; no zero fill"})
+            results.append(
+                {"case": name, "error": str(exc), "finding": "invalid feedback raises; no zero fill"}
+            )
         finally:
             client.disconnect()
     return results
@@ -273,12 +306,19 @@ def main():
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=False)
     result = {"datasets": inspect_datasets(args.datasets)}
-    result["mock"] = [
-        pipeline_case(args.output, "normalized"),
-        pipeline_case(args.output, "unscaled", scale=1.0),
-        pipeline_case(args.output, "gripper_disabled", has_gripper=False),
-    ]
-    result["boundary"] = boundary_cases()
+    # A failed mock must never fall through to a real socket/serial connection.
+    with (
+        patch("socket.create_connection", side_effect=AssertionError("Offline audit forbids network")),
+        patch("serial.Serial.open", side_effect=AssertionError("Offline audit forbids serial devices")),
+    ):
+        result["mock"] = [
+            pipeline_case(args.output, "normalized"),
+            pipeline_case(args.output, "unscaled", scale=1.0),
+            pipeline_case(args.output, "modbus_raw", scale=1.0, register_feedback=True),
+            pipeline_case(args.output, "rm_plus_normalized", feedback_source="rm_plus"),
+            pipeline_case(args.output, "gripper_disabled", has_gripper=False),
+        ]
+        result["boundary"] = boundary_cases()
     (args.output / "results.json").write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
     print(
         json.dumps(

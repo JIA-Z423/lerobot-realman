@@ -53,6 +53,7 @@ class RealManFollower(Robot):
                 joint_scale=config.joint_scale,
                 has_gripper=config.has_gripper,
                 gripper_scale=config.gripper_scale,
+                gripper_feedback_source=config.gripper_feedback_source,
                 gripper_state_position_key=config.gripper_state_position_key,
                 gripper_position_register=config.gripper_position_register,
                 gripper_modbus_port=config.gripper_modbus_port,

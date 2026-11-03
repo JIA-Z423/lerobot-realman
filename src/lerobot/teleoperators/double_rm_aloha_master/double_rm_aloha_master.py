@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait
 from functools import cached_property
 from typing import Any
 
@@ -47,7 +47,7 @@ class DoubleRMAlohaMaster(Teleoperator):
                 **config.right_arm_config.__dict__,
             )
         )
-        self._executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="rm_aloha_double_master")
+        self._executor: ThreadPoolExecutor | None = None
 
     @cached_property
     def action_features(self) -> dict[str, type]:
@@ -69,11 +69,13 @@ class DoubleRMAlohaMaster(Teleoperator):
         try:
             self.left_arm.connect(calibrate)
             self.right_arm.connect(calibrate)
-        except Exception:
-            if self.left_arm.is_connected:
-                self.left_arm.disconnect()
-            if self.right_arm.is_connected:
-                self.right_arm.disconnect()
+            self._executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="rm_aloha_double_master")
+        except Exception as exc:
+            cleanup_errors = self._disconnect_arms()
+            if cleanup_errors:
+                raise ExceptionGroup(
+                    "RM Aloha connection and cleanup failed", [exc, *cleanup_errors]
+                ) from None
             raise
 
     @property
@@ -90,8 +92,11 @@ class DoubleRMAlohaMaster(Teleoperator):
 
     @check_if_not_connected
     def get_action(self) -> RobotAction:
+        assert self._executor is not None
         left_future = self._executor.submit(self.left_arm.get_action)
         right_future = self._executor.submit(self.right_arm.get_action)
+        # Finish both reads before propagating either error, so cleanup cannot close a busy connection.
+        wait((left_future, right_future))
         left_action = left_future.result()
         right_action = right_future.result()
         return {
@@ -103,8 +108,20 @@ class DoubleRMAlohaMaster(Teleoperator):
         if feedback:
             raise NotImplementedError("RM Aloha master does not expose force feedback.")
 
-    @check_if_not_connected
     def disconnect(self) -> None:
-        self.left_arm.disconnect()
-        self.right_arm.disconnect()
-        self._executor.shutdown(wait=True)
+        if self._executor is not None:
+            self._executor.shutdown(wait=True)
+            self._executor = None
+        errors = self._disconnect_arms()
+        if errors:
+            raise ExceptionGroup("Failed to disconnect RM Aloha masters", errors)
+
+    def _disconnect_arms(self) -> list[Exception]:
+        errors = []
+        for arm in (self.left_arm, self.right_arm):
+            if arm.is_connected:
+                try:
+                    arm.disconnect()
+                except Exception as exc:
+                    errors.append(exc)
+        return errors
