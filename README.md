@@ -1,349 +1,91 @@
-# RealMan 双臂 LeRobot 项目说明
+# LeRobot × RealMan 双臂
 
-本文档说明如何使用 RealMan 双臂 ALOHA 风格平台接入 [LeRobot](https://github.com/huggingface/lerobot)，完成被动式数据采集。
+基于 [Hugging Face LeRobot](https://github.com/huggingface/lerobot) 的 RealMan 双臂数据采集适配，面向 ALOHA 风格的双主手、双从臂和腕部相机平台。
 
-本仓库主体基于 Hugging Face LeRobot 项目，当前工作是在 LeRobot 的机器人、主手、相机和数据集接口之上，增加本实验室 RealMan 双臂设备的硬件适配和采集流程。后续模型训练与部署推理也将继续沿用 LeRobot 的数据集、策略训练和真实机器人推理接口。
+项目将 RealMan 的硬件反馈接入 LeRobot 数据集接口，记录示教动作、从臂状态和两路 RGB 视频，为后续模仿学习训练提供数据。当前默认使用**被动采集模式**：外部 RealMan 系统负责主从遥操作，LeRobot 负责读取与保存。
 
-当前已完成硬件采集流程，能够记录：
+[快速开始](#快速开始) · [操作与检查手册](docs/realman_usage.md) · [修复与验证记录](docs/realman_data_collection_check.md) · [文档目录](docs/README.md)
 
-- 双主手动作
-- 双从臂状态
-- 左右腕部相机视频
+## 主要功能
 
-默认使用被动采集模式。机械臂由外部 RealMan 或厂家控制系统驱动，LeRobot 只负责同步记录数据，不主动下发机械臂控制命令。
+- **双臂硬件接入**：支持 RealMan TCP JSON 状态读取与双主手串口数据读取。
+- **RM_ARM+ 夹爪反馈**：读取 CTAG2F120 的实际位置，检查异常反馈，保留合法的闭合零值。
+- **腕部视觉采集**：支持两路 RealSense RGB 相机，当前配置为 `640×480、30 FPS`，未启用顶部相机。
+- **LeRobot 数据集**：保存 14 维 `action`、14 维 `observation.state` 和两路腕部视频，可使用数据集工具查看。
+- **手动简洁检查**：一条命令显示两侧从臂、夹爪、主手和相机共 8 项读取结果，可按需保存详细 JSON。
 
-2026-11-02 已验证 CTAG2F120 的 RM_ARM+ 位置反馈和真实采集落盘；用户确认两侧实际张开，按授权关闭后反馈均回到 0。旧原生 `actpos` 在张开时仍为 0，当前配置应继续使用生态反馈。配置、检查方法、相机状态和验收限制统一见 [RealMan 采集检查与夹爪反馈说明](docs/realman_data_collection_check.md)。采集前可使用 [夹爪实时监视器](examples/realman/watch_realman_gripper.py)预检。
-
-## 1. 项目说明
-
-上游项目：
-
-- LeRobot: <https://github.com/huggingface/lerobot>
-- LeRobot 文档: <https://huggingface.co/docs/lerobot>
-
-睿尔曼公司提供的双臂配套项目代码已移出本仓库；本机参考副本位于同级目录 `../rm_aloha_v1/`，主要用于参考厂家原始通信方式、主手协议和 RealMan ALOHA 使用流程。
-
-当前 LeRobot 集成代码主要包括：
-
-| 路径 | 说明 |
-| --- | --- |
-| `configs/hardware/realman_double_arm_hardware_config.yaml` | 双臂采集配置文件 |
-| `examples/realman/check_realman_double_arm.py` | 双臂硬件检查脚本 |
-| `examples/realman/check_realman_readonly.py` | 有命令白名单的只读状态检查，保留 JSON 原始回包 |
-| `src/lerobot/robots/realman_follower/` | 单个 RealMan 从臂封装 |
-| `src/lerobot/robots/double_realman_follower/` | RealMan 双从臂封装 |
-| `src/lerobot/teleoperators/rm_aloha_master/` | 单个 RM ALOHA 主手封装 |
-| `src/lerobot/teleoperators/double_rm_aloha_master/` | 双主手封装 |
-
-## 1.1 项目目录
-
-后续使用重点关注以下目录：
-
-| 路径 | 说明 |
-| --- | --- |
-| `src/lerobot/` | LeRobot 主体代码和 RealMan 硬件适配代码 |
-| `configs/hardware/` | 硬件采集配置 |
-| `examples/realman/` | RealMan 双臂检查脚本 |
-| `datasets/` | 本地采集数据，默认不提交 |
-| `outputs/` | 训练、评估和运行输出，默认不提交 |
-| `visualizations/` | Rerun 可视化导出文件，默认不提交 |
-| `../rm_aloha_v1/`（本机外部参考） | 睿尔曼公司提供的配套项目代码，不包含在本仓库中 |
-
-
-## 1.2 版本管理说明
-
-建议将本仓库作为独立 Git 仓库维护：
-
-```bash
-git remote add origin git@github.com:<your_github_username>/<your_repo>.git
-git remote add upstream https://github.com/huggingface/lerobot.git
+```mermaid
+flowchart LR
+    M["双主手：示教动作"] --> R["LeRobot 被动采集"]
+    F["双从臂与夹爪：状态反馈"] --> R
+    C["两路腕部 RGB 相机"] --> R
+    R --> D["LeRobot 数据集：Parquet + 视频"]
 ```
 
+## 当前状态
 
+| 能力 | 状态 |
+| --- | --- |
+| 双主手、双从臂与夹爪采集适配 | 已集成；RM+ 反馈和真实采集落盘已验证 |
+| 两路腕部 D435 | 已验证识别及同时取帧；带双路视频编码的持续 30 FPS 性能待验收 |
+| 策略训练 | 保留上游 ACT、Diffusion、SmolVLA、π 系列等实现；RealMan 任务训练效果待验证 |
+| RealMan 策略部署 | 待补充控制适配及验收；当前 RM+ 通用动作接口保留拒绝发送保护 |
 
-本仓库的公开配置使用占位符。真实设备配置请放在 `configs/hardware/realman_double_arm_hardware_config.local.yaml`。
+`action` 来自主手测量，`observation.state` 来自从臂反馈，两者各为左右六关节加夹爪。详细数据含义与验收范围见[操作手册](docs/realman_usage.md)。
 
-## 2. 环境安装
+## 快速开始
 
-进入 LeRobot 环境：
+以下命令在项目根目录执行，适用于本机已有的 `lerobot` Conda 环境。新机器请先按[环境与配置说明](docs/realman_usage.md#1-环境安装)完成安装。
+
+### 1. 准备环境与配置
 
 ```bash
 conda activate lerobot
-export PYTHONPATH=$PWD/src:$PYTHONPATH
+export PYTHONPATH="$PWD/src${PYTHONPATH:+:$PYTHONPATH}"
 ```
 
-检查主要依赖：
+根据[配置模板](configs/hardware/realman_double_arm_hardware_config.yaml)准备 `configs/hardware/realman_double_arm_hardware_config.local.yaml`，填写真实设备参数和任务信息。已有本地配置时直接核对使用；本地配置不提交 Git。
+
+### 2. 手动检查硬件
 
 ```bash
-python -c "import serial, pyrealsense2, draccus; print('ok')"
+python examples/realman/check_realman_readonly.py --summary
 ```
 
-如果需要从零安装依赖：
+终端直接显示每项通过或失败的原因。完整检查应为 **8 项通过、失败 0、跳过 0**；检查只读取数据，不驱动设备。异常处理和分项检查见[硬件检查手册](docs/realman_usage.md#4-手动硬件检查)。
 
-参考LeRobot 安装文档：<https://huggingface.co/docs/lerobot/installation>
+### 3. 开始被动采集
 
-## 3. 硬件参数
+```bash
+python -m lerobot.scripts.lerobot_record \
+  --config_path=configs/hardware/realman_double_arm_hardware_config.local.yaml \
+  --play_sounds=false
+```
 
-公开配置使用以下占位符。运行前请在本地 `.local.yaml` 配置中替换为真实设备参数：
+本地配置保持 `passive_recording: true`、两侧夹爪初始化关闭。任务描述、输出目录、episode 数量和目标采样频率由配置决定。续录、数据格式及可视化见[操作手册](docs/realman_usage.md#5-数据采集)。
 
-| 设备 | 参数 |
+## 文档
+
+| 文档 | 内容 |
 | --- | --- |
-| 左从臂 | `REPLACE_WITH_LEFT_REALMAN_ARM_HOST:8080` |
-| 右从臂 | `REPLACE_WITH_RIGHT_REALMAN_ARM_HOST:8080` |
-| 左主手 | `REPLACE_WITH_LEFT_MASTER_SERIAL_PORT` |
-| 右主手 | `REPLACE_WITH_RIGHT_MASTER_SERIAL_PORT` |
-| 左腕相机 | `REPLACE_WITH_LEFT_WRIST_CAMERA_SERIAL` |
-| 右腕相机 | `REPLACE_WITH_RIGHT_WRIST_CAMERA_SERIAL` |
+| [操作与硬件检查手册](docs/realman_usage.md) | 环境、本地配置、手动检查、异常排查、采集、续录和数据查看 |
+| [夹爪修复与实机验证记录](docs/realman_data_collection_check.md) | 恒零原因、修复链路、设备信息、验证证据与限制 |
+| [上游文档源码](docs/source/) | 策略、数据集、训练与硬件接口的 LeRobot 文档 |
+| [贡献指南](CONTRIBUTING.md) | 上游开发与贡献规范 |
 
-如果重启后串口名发生变化，建议把 `/dev/ttyUSB*` 改成稳定的设备路径：
-
-```bash
-ls -l /dev/serial/by-id/
-```
-
-## 4. 配置文件
-
-公开模板配置文件：
-
-```bash
-configs/hardware/realman_double_arm_hardware_config.yaml
-```
-
-真实采集建议使用本地配置文件：
-
-```bash
-configs/hardware/realman_double_arm_hardware_config.local.yaml
-```
-
-关键默认项：
-
-```yaml
-passive_recording: true
-
-dataset:
-  repo_id: local/realman_double_arm_dataset
-  root: datasets/realman_double_arm_dataset
-  num_episodes: 1
-  fps: 30
-  episode_time_s: 8
-  reset_time_s: 0
-  streaming_encoding: false
-  vcodec: h264
-  push_to_hub: false
-
-robot:
-  type: double_realman_follower
-
-teleop:
-  type: double_rm_aloha_master
-```
-
-正式采集前通常需要确认：
-
-- `dataset.repo_id`
-- `dataset.root`
-- `dataset.single_task`
-- `dataset.num_episodes`
-- 相机序列号
-- 主手串口路径
-
-当前双臂夹爪是正式采集 schema 的一部分。公开模板和本地配置使用 `gripper_feedback_source: rm_plus`，读取 `get_rm_plus_state_info.state_info.pos[0]`，按 `gripper_scale=1000.0` 归一化；它不是毫米。默认数据为左右各 6 轴 + 夹爪，共 `14` 维 action/state。RM+ 适配当前只支持读取，发送动作会明确报错。普通原生夹爪可显式使用 `gripper_feedback_source: native`。
-
-配置中的 `control_hz` 仅作为兼容字段保留；被动硬件遥操作模式下，LeRobot 不控制主从臂闭环，只按 `dataset.fps` 采样主手动作、从臂状态和相机帧。
-
-## 5. 硬件检查
-
-本机 RM_ARM+ 夹爪优先使用只读检查：
-
-```bash
-PYTHONPATH=src python examples/realman/check_realman_readonly.py \
-  --config-path configs/hardware/realman_double_arm_hardware_config.local.yaml \
-  --output /tmp/realman-readonly.json \
-  --skip-cameras
-```
-
-查看 JSON 中的 `followers.left.rm_plus`、`followers.right.rm_plus`。默认不探测普通 Modbus 寄存器，也不启用或切换协议；`--probe-modbus` 才会增加普通寄存器读数。脚本正常退出不等于所有设备正常，应检查各分项错误和状态。
-
-下面的旧检查脚本使用原生 `get_gripper_state`，适合原生夹爪，不能用于判定当前 RM_ARM+ 夹爪的健康状态：
-
-```bash
-python examples/realman/check_realman_double_arm.py \
-  --left-host=<left_arm_host> \
-  --right-host=<right_arm_host> \
-  --left-master-port=<left_master_serial_port> \
-  --right-master-port=<right_master_serial_port> \
-  --left-wrist-serial=<left_wrist_camera_serial> \
-  --right-wrist-serial=<right_wrist_camera_serial>
-```
-
-正常输出应包含：
+## 项目结构
 
 ```text
-RealMan double-arm check passed.
+configs/hardware/     双臂配置模板与本地设备配置
+examples/realman/     只读检查、夹爪监视及离线验证工具
+src/lerobot/          LeRobot 主体与 RealMan 机器人、主手适配
+docs/                操作手册、验证记录和上游文档
+datasets/            本地采集数据（不提交）
+outputs/             训练与运行输出（不提交）
 ```
 
-测试只读循环速度：
+## 致谢与许可
 
-```bash
-python examples/realman/check_realman_double_arm.py \
-  --left-host=<left_arm_host> \
-  --right-host=<right_arm_host> \
-  --left-master-port=<left_master_serial_port> \
-  --right-master-port=<right_master_serial_port> \
-  --left-wrist-serial=<left_wrist_camera_serial> \
-  --right-wrist-serial=<right_wrist_camera_serial> \
-  --benchmark-samples=50
-```
+本项目基于 [Hugging Face LeRobot](https://github.com/huggingface/lerobot)，感谢上游提供机器人接口、数据集、策略训练和可视化工具。RealMan 通信与主从遥操作适配参考了厂家配套项目。
 
-`--benchmark-samples` 会创建正式的双臂 robot、双主手 teleop 和相机对象，因此必须连接真实硬件；`--skip-*` 只用于跳过前置分项检查，不会跳过 benchmark 内部读取。
-
-其他常用检查：
-
-```bash
-python examples/realman/check_realman_double_arm.py --skip-cameras
-python examples/realman/check_realman_double_arm.py --skip-gripper  # 仅用于临时分项排查
-```
-
-## 6. 数据采集
-
-默认配置为本地采集 `1` 个 episode，每个 episode `8` 秒，`30 FPS`，数据保存到：
-
-```bash
-datasets/realman_double_arm_dataset
-```
-
-开始采集：
-
-```bash
-python -m lerobot.scripts.lerobot_record \
-  --config_path=configs/hardware/realman_double_arm_hardware_config.local.yaml \
-  --play_sounds=false
-```
-
-如需临时修改保存目录或 episode 数量，可以在命令行覆盖：
-
-```bash
-python -m lerobot.scripts.lerobot_record \
-  --config_path=configs/hardware/realman_double_arm_hardware_config.local.yaml \
-  --dataset.root=datasets/realman_double_arm_test \
-  --dataset.num_episodes=3 \
-  --play_sounds=false
-```
-
-继续采集已有本地数据集：
-
-```bash
-python -m lerobot.scripts.lerobot_record \
-  --config_path=configs/hardware/realman_double_arm_hardware_config.local.yaml \
-  --resume=true \
-  --play_sounds=false
-```
-
-## 7. 数据格式
-
-采集得到的数据包含：
-
-| 字段 | 说明 |
-| --- | --- |
-| `action` | 14 维双主手动作 |
-| `observation.state` | 14 维双从臂状态 |
-| `observation.images.left_wrist` | 左腕 RGB 视频 |
-| `observation.images.right_wrist` | 右腕 RGB 视频 |
-
-默认配置下，每个 8 秒 episode 约为 240 帧：
-
-```text
-8 秒 x 30 FPS = 240 帧
-```
-
-数据目录通常包含：
-
-```text
-datasets/realman_double_arm_dataset/
-├── data/
-├── meta/
-└── videos/
-```
-
-## 8. 数据可视化
-
-使用 LeRobot 数据集可视化工具查看视频、动作、状态和时间轴：
-
-```bash
-lerobot-dataset-viz \
-  --repo-id local/realman_double_arm_dataset \
-  --root datasets/realman_double_arm_dataset \
-  --episode-index 0
-```
-
-如果当前机器没有图形界面，可以导出 Rerun 文件：
-
-```bash
-mkdir -p visualizations
-
-lerobot-dataset-viz \
-  --repo-id local/realman_double_arm_dataset \
-  --root datasets/realman_double_arm_dataset \
-  --episode-index 0 \
-  --save 1 \
-  --output-dir visualizations
-```
-
-生成的 `.rrd` 文件可以在有图形界面的机器上打开：
-
-```bash
-rerun visualizations/local_realman_double_arm_dataset_episode_0.rrd
-```
-
-只查看数据集基本信息：
-
-```bash
-lerobot-edit-dataset \
-  --repo_id local/realman_double_arm_dataset \
-  --root datasets/realman_double_arm_dataset \
-  --operation.type=info
-```
-
-快速查看视频元信息：
-
-```bash
-conda run -n lerobot ffprobe \
-  -v error \
-  -select_streams v:0 \
-  -show_entries stream=codec_name,width,height,avg_frame_rate,nb_frames,duration \
-  -of default=noprint_wrappers=1 \
-  datasets/realman_double_arm_dataset/videos/observation.images.left_wrist/chunk-000/file-000.mp4
-```
-
-## 9. 模型训练
-
-待补充。
-
-
-- 数据集路径和 `repo_id` 选择
-- ACT / Diffusion / SmolVLA 等策略训练入口
-- 训练参数配置
-- checkpoint 保存位置
-- 训练日志和结果查看方式
-
-## 10. 部署推理
-
-待补充。
-
-
-
-- 加载训练好的 policy checkpoint
-- 使用 RealMan 双臂配置进行实机推理
-- 推理前硬件检查
-- 安全限位和急停注意事项
-- 评估 episode 的保存与回放
-
-## 11. 说明
-
-- 当前版本面向双臂、两路 `640x480` 腕部 RGB 相机和夹爪的 `30 FPS` 被动数据采集。
-- 机械臂和主手遥操作由硬件系统完成；LeRobot 只按 `dataset.fps` 同步读取主手、从臂和相机数据。
-- 默认关闭实时视频编码，先写入图片，episode 结束后再编码，采集帧率更稳定。
-- `30 FPS` 或实时编码的主要瓶颈通常在图像写入或视频编码。
-- GPU 或硬件编码可能提升采集速度，但需要在目标电脑上实际测试。
-- 顶视或外部相机默认未启用，确认型号和序列号后再加入配置。
-- 无显示器环境下，`pynput` 或 `DISPLAY` 相关警告不影响被动采集。
+代码沿用 [Apache License 2.0](LICENSE)。

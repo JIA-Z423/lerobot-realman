@@ -11,13 +11,15 @@ TCP commands are restricted to status queries. Master serial ports receive only
 the fixed state-query bytes. Configured wrist cameras provide one RGB frame;
 images are not saved. Direct Modbus reads require --probe-modbus because they
 can time out when the gripper link is managed by RM+. This script never creates
-or appends a dataset.
+or appends a dataset. Use --summary for a manually invoked, concise terminal
+report; --output optionally saves the full JSON for troubleshooting.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import socket
 import tempfile
 import time
@@ -391,6 +393,145 @@ def read_cameras(robot: dict[str, Any], timeout_s: float) -> dict[str, Any]:
     return result
 
 
+def _check_errors(item: dict[str, Any]) -> None:
+    for key in ("error", "connection_error", "close_error", "stop_error"):
+        if item.get(key):
+            raise ValueError(str(item[key]))
+
+
+def _is_finite_number(value: Any) -> bool:
+    return isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def _query_responses(follower: dict[str, Any], command: str) -> list[dict[str, Any]]:
+    _check_errors(follower)
+    queries = [query for query in follower.get("queries", []) if query["payload"]["command"] == command]
+    if not queries:
+        raise ValueError(f"未取得 {command} 反馈")
+    responses = []
+    for query in queries:
+        _check_errors(query)
+        responses.append(query["response"])
+    return responses
+
+
+def _joint_summary(follower: dict[str, Any]) -> str:
+    for response in _query_responses(follower, "get_joint_degree"):
+        joints = response.get("joint")
+        if not isinstance(joints, list) or len(joints) != 6 or not all(map(_is_finite_number, joints)):
+            raise ValueError("需要 6 个有效关节数值")
+    return "6 个关节反馈有效"
+
+
+def _gripper_summary(follower: dict[str, Any], config: dict[str, Any]) -> str:
+    if config.get("has_gripper") is not True or config.get("gripper_feedback_source") != "rm_plus":
+        raise ValueError("本机夹爪需要 has_gripper=true、gripper_feedback_source=rm_plus")
+    mode = _query_responses(follower, "get_rm_plus_mode")[0].get("mode")
+    if type(mode) is not int or mode <= 0:
+        raise ValueError("RM_ARM+ 未开启或模式无效")
+    base = _query_responses(follower, "get_rm_plus_base_info")[0].get("base_info")
+    scale = config.get("gripper_scale", 1000.0)
+    if not _is_finite_number(scale) or scale <= 0:
+        raise ValueError("gripper_scale 必须为正数")
+    if not isinstance(base, dict) or type(base.get("dof")) is not int or base["dof"] != 1:
+        raise ValueError("RM+ 未返回有效的单自由度设备身份")
+    if base.get("pos_low") != [0] or base.get("pos_up") != [scale]:
+        raise ValueError("RM+ 位置上下限与 gripper_scale 不符")
+    for response in _query_responses(follower, "get_rm_plus_state_info"):
+        state = response.get("state_info")
+        if not isinstance(state, dict):
+            raise ValueError("缺少 RM+ state_info")
+        if "sys_state" in state and state["sys_state"] != 0:
+            raise ValueError(f"RM+ 系统状态异常：sys_state={state['sys_state']}")
+        error_fields = [key for key in ("sys_err", "sys_error") if key in state]
+        if not error_fields:
+            raise ValueError("RM+ 缺少系统错误字段")
+        for key in error_fields:
+            if state[key] != 0:
+                raise ValueError(f"RM+ 系统错误：{key}={state[key]}")
+        if state.get("dof_err") != [0]:
+            raise ValueError(f"RM+ 自由度错误或字段缺失：dof_err={state.get('dof_err')}")
+        positions = state.get("pos")
+        if not isinstance(positions, list) or len(positions) != 1 or not _is_finite_number(positions[0]):
+            raise ValueError("RM+ 缺少有效位置")
+        raw = positions[0]
+        if not 0 <= raw <= scale:
+            raise ValueError(f"RM+ 位置超出范围：{raw}")
+    return f"RM+ 位置={raw / scale:.3f}（原始值 {raw}，闭合时为 0 可正常）"
+
+
+def _master_summary(master: dict[str, Any]) -> str:
+    _check_errors(master)
+    if not master.get("exists"):
+        raise ValueError(f"串口不存在：{master.get('port')}")
+    if not master.get("samples"):
+        raise ValueError("未取得主手反馈")
+    expected = {f"joint_{index}.pos" for index in range(1, 7)} | {"gripper.pos"}
+    for sample in master["samples"]:
+        _check_errors(sample)
+        state = sample.get("state")
+        if (
+            not isinstance(state, dict)
+            or set(state) != expected
+            or not all(map(_is_finite_number, state.values()))
+        ):
+            raise ValueError("需要 6 个关节和 1 个夹爪的有效主手数值")
+    return f"{master['port']}，7 个数值读取成功"
+
+
+def _camera_summary(cameras: dict[str, Any], name: str) -> str:
+    _check_errors(cameras)
+    camera = cameras.get("configured", {}).get(name, {})
+    _check_errors(camera)
+    frame = camera.get("frame")
+    if not frame:
+        raise ValueError("未配置腕部相机或未取得 RGB 图像")
+    config = camera["config"]
+    if (frame["width"], frame["height"]) != (config.get("width", 640), config.get("height", 480)):
+        raise ValueError("图像尺寸与配置不符")
+    return f"{frame['width']}×{frame['height']} RGB 取帧成功"
+
+
+def print_summary(report: dict[str, Any], config: dict[str, Any]) -> bool:
+    """Assess selected static readings; skipped devices never count as passed."""
+    passed = failed = skipped = 0
+
+    def show(label, check, *args, skip=False):
+        nonlocal passed, failed, skipped
+        if skip:
+            skipped += 1
+            print(f"[跳过] {label}")
+            return
+        try:
+            detail = check(*args)
+        except (ValueError, KeyError, TypeError) as exc:
+            failed += 1
+            print(f"[失败] {label}：{exc}")
+        else:
+            passed += 1
+            print(f"[通过] {label}：{detail}")
+
+    if report.get("error"):
+        print(f"[失败] 检查未完成：{report['error']}")
+        return False
+    omitted = report.get("skipped", [])
+    for side, name in (("left", "左"), ("right", "右")):
+        follower = report["followers"].get(side, {})
+        show(f"{name}从臂", _joint_summary, follower, skip="followers" in omitted)
+        show(
+            f"{name}夹爪",
+            _gripper_summary,
+            follower,
+            config.get("robot", {}).get(f"{side}_arm_config", {}),
+            skip="followers" in omitted,
+        )
+        show(f"{name}主手", _master_summary, report["masters"].get(side, {}), skip="masters" in omitted)
+        show(f"{name}腕相机", _camera_summary, report["cameras"], f"{side}_wrist", skip="cameras" in omitted)
+    print(f"本次检查：通过 {passed} 项，失败 {failed} 项，跳过 {skipped} 项。")
+    print("仅检查静态读取；相机画面内容、动态跟随及持续采集性能需另行确认。")
+    return passed > 0 and failed == 0
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -398,7 +539,10 @@ def main() -> None:
         type=Path,
         default=Path("configs/hardware/realman_double_arm_hardware_config.local.yaml"),
     )
-    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--output", type=Path, help="Optional full JSON report (overwrites an existing file)")
+    parser.add_argument(
+        "--summary", action="store_true", help="Print concise pass/fail results for manual checks"
+    )
     parser.add_argument("--samples", type=int, default=3)
     parser.add_argument("--timeout-s", type=float, default=2.0)
     parser.add_argument("--skip-followers", action="store_true")
@@ -410,6 +554,10 @@ def main() -> None:
         help="Also read CTAG2F registers directly; RM+ may own this link, causing these optional queries to time out.",
     )
     args = parser.parse_args()
+    if not args.summary and args.output is None:
+        parser.error("specify --summary for terminal results or --output for a full JSON report")
+    if args.summary and args.probe_modbus:
+        parser.error("--probe-modbus requires the detailed JSON mode without --summary")
     if args.samples < 1 or not 0 < args.timeout_s <= 30:
         parser.error("samples must be positive; timeout-s must be in (0, 30]")
     result: dict[str, Any] = {
@@ -421,8 +569,11 @@ def main() -> None:
         "cameras": {},
         "skipped": [name for name in ("followers", "masters", "cameras") if getattr(args, f"skip_{name}")],
     }
+    config: dict[str, Any] = {}
     try:
         config = yaml.safe_load(args.config_path.read_text())
+        if not isinstance(config, dict):
+            raise ValueError("Expected a YAML configuration mapping")
         for side in ("left", "right"):
             if not args.skip_followers:
                 result["followers"][side] = read_follower(
@@ -437,11 +588,14 @@ def main() -> None:
             result["cameras"] = read_cameras(config["robot"], args.timeout_s)
     except Exception as exc:
         result["error"] = error_text(exc)
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
-    print(
-        f"Read-only check saved to {args.output}; inspect errors and raw responses before drawing conclusions."
-    )
+    if args.output is not None:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
+        print(
+            f"Read-only check saved to {args.output}; inspect errors and raw responses before drawing conclusions."
+        )
+    if args.summary and not print_summary(result, config):
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

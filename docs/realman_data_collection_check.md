@@ -1,6 +1,8 @@
 # RealMan 双臂采集检查与夹爪反馈说明
 
-实机检查：2026-11-02；软件复核更新：2026-11-03。本文汇总本机 RealMan 双臂接入 LeRobot 的检查结论，替代此前按日期分散保存的审计报告。重复日志、临时数据集和一次性动作脚本已清理。
+实机检查：2026-11-02；软件复核：2026-11-03；操作文档整理：2026-11-06。本文汇总本机 RealMan 双臂接入 LeRobot 的检查结论，替代此前按日期分散保存的审计报告。重复日志、临时数据集和一次性动作脚本已清理。
+
+具体使用步骤统一见[操作与硬件检查手册](realman_usage.md)，本文保留修复原因、实机证据和已知限制。
 
 ## 1. 夹爪恒零的原因及修复
 
@@ -34,7 +36,7 @@ get_rm_plus_state_info.state_info.pos[0] / 1000
 
 主手串口为 460800 baud；USB 名称变化时，可按已确认的物理身份改用 `/dev/serial/by-id/` 路径。上表主手左右沿用本地配置，尚未通过主手动作独立标定。
 
-使用[本地配置](../configs/hardware/realman_double_arm_hardware_config.local.yaml)，公开参考为[配置模板](../configs/hardware/realman_double_arm_hardware_config.yaml)。两从臂保持：
+使用本地 `configs/hardware/realman_double_arm_hardware_config.local.yaml`，公开参考为[配置模板](../configs/hardware/realman_double_arm_hardware_config.yaml)。两从臂保持：
 
 ```yaml
 sdk_backend: socket_json
@@ -69,27 +71,18 @@ initialize_gripper_modbus: false
 
 ## 4. 采集前的只读复查
 
-在项目根目录使用既有 `lerobot` 环境运行：
+日常可在项目根目录使用既有 `lerobot` 环境，手动运行简洁检查：
 
 ```bash
 conda activate lerobot
-PYTHONPATH=src python examples/realman/watch_realman_gripper.py \
-  --duration-s 10 --fps 10
+PYTHONPATH=src python examples/realman/check_realman_readonly.py --summary
 ```
 
-[实时监视器](../examples/realman/watch_realman_gripper.py)只查询两侧 RM+ 模式、身份、状态及位置，不初始化或发送动作。两侧预检应通过，位置及错误检查正常；`changed=false` 在静止时并不表示故障。
+[分项检查器](../examples/realman/check_realman_readonly.py)使用查询白名单，简洁模式显示两侧从臂、夹爪、主手和相机共 8 项结果；异常时返回非零退出码。日常无需读取 JSON，需留存原始回包时再添加 `--output`。仅使用详细报告模式、不加 `--summary` 时，退出成功仍只代表报告生成。
 
-包括串口和相机在内的分项检查：
+[实时监视器](../examples/realman/watch_realman_gripper.py)用于进一步连续观察 RM+ 模式、身份、状态及位置，不初始化或发送动作。静止时 `changed=false` 并不表示故障。
 
-```bash
-PYTHONPATH=src python examples/realman/check_realman_readonly.py \
-  --config-path configs/hardware/realman_double_arm_hardware_config.local.yaml \
-  --output /tmp/realman-readonly.json
-```
-
-[分项检查器](../examples/realman/check_realman_readonly.py)使用查询白名单；可加 `--skip-cameras`、`--skip-masters`、`--skip-followers`。默认不探测普通 Modbus，也不切换协议。脚本退出成功仅表示检查完成，须查看 JSON 各分项错误和原始反馈。
-
-正式采集仍按 [README](../README.md) 的入口执行，使用新的输出目录，避免混入历史数据。旧的原生夹爪检查器不能用于判断本机 RM+ 夹爪是否健康。
+分项检查、夹爪监视和异常排查的完整命令见[手动硬件检查](realman_usage.md#4-手动硬件检查)。正式采集按[数据采集步骤](realman_usage.md#5-数据采集)执行，使用新的输出目录，避免混入历史数据。旧的原生夹爪检查器不能用于判断本机 RM+ 夹爪是否健康。
 
 ## 5. 已知限制与历史数据
 

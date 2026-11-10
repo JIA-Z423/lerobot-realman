@@ -7,6 +7,7 @@
 
 import importlib.util
 import json
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
@@ -334,3 +335,134 @@ def test_master_uses_only_fixed_query_and_decoder(monkeypatch):
     assert instances[0].sent == [readonly.MASTER_QUERY] * 2
     assert not instances[0].is_open
     assert [sample["state"]["gripper.pos"] for sample in result["samples"]] == [0.321, 0.321]
+
+
+@pytest.fixture
+def summary_inputs():
+    config = {"robot": {}}
+    report = {"followers": {}, "masters": {}, "cameras": {"configured": {}}, "skipped": []}
+    for side in ("left", "right"):
+        config["robot"][f"{side}_arm_config"] = {
+            "has_gripper": True,
+            "gripper_feedback_source": "rm_plus",
+            "gripper_scale": 1000.0,
+        }
+        responses = {
+            "get_joint_degree": {"joint": [0] * 6},
+            "get_gripper_state": {"status": 0, "enable": 0, "actpos": 0},
+            "get_rm_plus_mode": {"mode": 115200},
+            "get_rm_plus_base_info": {"base_info": deepcopy(RM_PLUS_BASE_INFO)},
+            "get_rm_plus_state_info": {"state_info": deepcopy(RM_PLUS_STATE_INFO)},
+        }
+        report["followers"][side] = {
+            "queries": [
+                {"payload": {"command": command}, "response": response}
+                for command, response in responses.items()
+            ]
+        }
+        report["masters"][side] = {
+            "exists": True,
+            "port": f"/offline-{side}",
+            "samples": [{"state": {**{f"joint_{i}.pos": 0.0 for i in range(1, 7)}, "gripper.pos": 0.0}}],
+        }
+        report["cameras"]["configured"][f"{side}_wrist"] = {
+            "config": {"width": 640, "height": 480},
+            "frame": {"width": 640, "height": 480},
+        }
+    return report, config
+
+
+def test_summary_accepts_closed_grippers_and_ignores_mismatched_native_feedback(summary_inputs, capsys):
+    report, config = summary_inputs
+    # RM+ confirms the right gripper is open while the old native interface still says zero.
+    report["followers"]["right"]["queries"][-1]["response"]["state_info"]["pos"] = [300]
+    assert readonly.print_summary(report, config)
+    output = capsys.readouterr().out
+    assert "通过 8 项，失败 0 项，跳过 0 项" in output
+    assert "位置=0.000" in output
+    assert "位置=0.300" in output
+
+
+@pytest.mark.parametrize(
+    "patch",
+    [
+        {"sys_err": 1},
+        {"sys_error": 1},
+        {"dof_err": [1]},
+        {"pos": []},
+        {"pos": [True]},
+        {"pos": [float("nan")]},
+        {"pos": [1001]},
+    ],
+)
+def test_summary_rejects_invalid_rm_plus_feedback(summary_inputs, capsys, patch):
+    report, config = summary_inputs
+    report["followers"]["left"]["queries"][-1]["response"]["state_info"].update(patch)
+    assert not readonly.print_summary(report, config)
+    assert "[失败] 左夹爪" in capsys.readouterr().out
+
+
+def test_summary_does_not_treat_enabled_mode_as_online_device(summary_inputs, capsys):
+    report, config = summary_inputs
+    report["followers"]["left"]["queries"][-2] = {
+        "payload": {"command": "get_rm_plus_base_info"},
+        "response": {"get_state": False},
+        "error": "Controller returned get_state=false",
+    }
+    assert not readonly.print_summary(report, config)
+    assert "get_state=false" in capsys.readouterr().out
+
+
+def test_summary_checks_master_samples_and_camera_stop_errors(summary_inputs, capsys):
+    report, config = summary_inputs
+    report["masters"]["left"]["samples"][0]["state"]["gripper.pos"] = float("inf")
+    report["cameras"]["configured"]["right_wrist"]["stop_error"] = "USB disconnected"
+    assert not readonly.print_summary(report, config)
+    output = capsys.readouterr().out
+    assert "[失败] 左主手" in output
+    assert "[失败] 右腕相机：USB disconnected" in output
+
+
+def test_summary_does_not_pass_when_everything_is_skipped(summary_inputs, capsys):
+    report, config = summary_inputs
+    report["skipped"] = ["followers", "masters", "cameras"]
+    assert not readonly.print_summary(report, config)
+    assert "通过 0 项，失败 0 项，跳过 8 项" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("failed", [False, True])
+@pytest.mark.parametrize("mode", ["summary", "summary-with-json", "json-only"])
+def test_summary_cli_uses_default_config_without_requiring_json(
+    summary_inputs, monkeypatch, tmp_path, failed, mode
+):
+    report, config = summary_inputs
+    # All hardware entry points are replaced; any accidental real TCP access fails the test.
+    monkeypatch.setattr(readonly.socket, "create_connection", lambda *a, **k: pytest.fail("Real TCP access"))
+    monkeypatch.setattr(readonly, "serial_inventory", lambda: {})
+    monkeypatch.setattr(readonly.yaml, "safe_load", lambda text: config)
+    monkeypatch.setattr(readonly.Path, "read_text", lambda self: "offline config")
+    monkeypatch.setattr(readonly, "read_follower", lambda *a, **k: report["followers"]["left"])
+    monkeypatch.setattr(readonly, "read_master", lambda *a, **k: report["masters"]["left"])
+    monkeypatch.setattr(readonly, "read_cameras", lambda *a, **k: report["cameras"])
+    config["teleop"] = {"left_arm_config": {}, "right_arm_config": {}}
+    monkeypatch.chdir(tmp_path)
+    argv = [str(SCRIPT)]
+    if mode != "json-only":
+        argv.append("--summary")
+    if mode != "summary":
+        argv.extend(["--output", "report.json"])
+    monkeypatch.setattr("sys.argv", argv)
+    if failed:
+        report["followers"]["left"]["queries"][-1]["response"]["state_info"]["sys_err"] = 1
+    if failed and mode != "json-only":
+        with pytest.raises(SystemExit) as exc:
+            readonly.main()
+        assert exc.value.code == 1
+    else:
+        readonly.main()
+    if mode == "summary":
+        assert not list(tmp_path.iterdir())
+    else:
+        with (tmp_path / "report.json").open() as stream:
+            saved = json.load(stream)
+        assert saved["followers"]["left"] == report["followers"]["left"]
