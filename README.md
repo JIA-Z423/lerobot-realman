@@ -1,5 +1,7 @@
 # LeRobot × RealMan 双臂
 
+本升级候选基于 LeRobot `v0.7.0`，保留 RealMan 被动采集适配；请使用独立环境和迁移后的配置，见[操作手册](docs/realman_usage.md#1-环境安装)。当前 `dev` 分支仍供原有采集开发使用。
+
 基于 [Hugging Face LeRobot](https://github.com/huggingface/lerobot) 的 RealMan 双臂数据采集适配，面向 ALOHA 风格的双主手、双从臂和腕部相机平台。
 
 项目将 RealMan 的硬件反馈接入 LeRobot 数据集接口，记录示教动作、从臂状态和两路 RGB 视频，为后续模仿学习训练提供数据。当前默认使用**被动采集模式**：外部 RealMan 系统负责主从遥操作，LeRobot 负责读取与保存。

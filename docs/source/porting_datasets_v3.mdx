@@ -96,9 +96,9 @@ DROID_FEATURES = {
     "observation.state.joint_position": {"dtype": "float32", "shape": (7,)},
 
     # Camera observations
-    "observation.images.wrist_left": {"dtype": "image"},
-    "observation.images.exterior_1_left": {"dtype": "image"},
-    "observation.images.exterior_2_left": {"dtype": "image"},
+    "observation.images.wrist_left": {"dtype": "video", "shape": (180, 320, 3), "names": ["height", "width", "channels"]},
+    "observation.images.exterior_1_left": {"dtype": "video", "shape": (180, 320, 3), "names": ["height", "width", "channels"]},
+    "observation.images.exterior_2_left": {"dtype": "video", "shape": (180, 320, 3), "names": ["height", "width", "channels"]},
 
     # Actions
     "action.gripper_position": {"dtype": "float32", "shape": (1,)},
@@ -300,7 +300,7 @@ This replaces the old episode-per-file structure with efficient, optimally-sized
 If you have existing datasets in v2.1 format, use the migration tool:
 
 ```bash
-python src/lerobot/datasets/v30/convert_dataset_v21_to_v30.py \
+python src/lerobot/scripts/convert_dataset_v21_to_v30.py \
     --repo-id your_id/existing_dataset
 ```
 

@@ -19,7 +19,7 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any
 
-from lerobot.types import RobotAction
+from lerobot.lerobot_types import RobotAction
 from lerobot.utils.decorators import check_if_already_connected, check_if_not_connected
 from lerobot.utils.import_utils import _serial_available, require_package
 
@@ -154,9 +154,7 @@ class RMAlohaMaster(Teleoperator):
         if start < 0:
             if allow_incomplete:
                 return ""
-            raise RuntimeError(
-                f"RM Aloha master state frame not found on {self.config.port}: {encoded!r}"
-            )
+            raise RuntimeError(f"RM Aloha master state frame not found on {self.config.port}: {encoded!r}")
         return encoded[start:]
 
     def _find_state_frame_start(self, encoded: str) -> int:

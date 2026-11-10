@@ -17,7 +17,7 @@
 from concurrent.futures import ThreadPoolExecutor, wait
 from functools import cached_property
 
-from lerobot.types import RobotAction, RobotObservation
+from lerobot.lerobot_types import RobotAction, RobotObservation
 from lerobot.utils.decorators import check_if_already_connected, check_if_not_connected
 
 from ..realman_follower import RealManFollower, RealManFollowerConfig

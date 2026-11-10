@@ -1,5 +1,13 @@
 # Meta-World
 
+<Tip>
+  The commands below run the simulator locally. To keep its dependencies away
+  from your policy's, serve it instead with `lerobot-env-server
+  --config_path=docker/sim/configs/metaworld.yaml --sim.task=<task> --docker=true`, where `<task>`
+  is the command's `--env.task`, and add `--env.server.endpoint=tcp/127.0.0.1:7448` to
+  the command. A server runs the task it was started with (see [Simulation: local or served](./simulation)).
+</Tip>
+
 Meta-World is an open-source simulation benchmark for **multi-task and meta reinforcement learning** in continuous-control robotic manipulation. It bundles 50 diverse manipulation tasks using everyday objects and a common tabletop Sawyer arm, providing a standardized playground to test whether algorithms can learn many different tasks and generalize quickly to new ones.
 
 - Paper: [Meta-World: A Benchmark and Evaluation for Multi-Task and Meta Reinforcement Learning paper](https://arxiv.org/abs/1910.10897)
@@ -33,17 +41,17 @@ pip install -e ".[metaworld]"
 ```
 
 <Tip warning={true}>
-If you encounter an `AssertionError: ['human', 'rgb_array', 'depth_array']` when running Meta-World environments, this is a mismatch between Meta-World and your Gymnasium version. Fix it with:
+If you encounter an `AssertionError: ['human', 'rgb_array', 'depth_array']` when running Meta-World environments, this is a mismatch between Meta-World and your Gymnasium version. Reinstall the Gymnasium version LeRobot supports (Meta-World `3.0.0` works with it):
 
 ```bash
-pip install "gymnasium==1.1.0"
+pip install "gymnasium>=1.1.1,<2.0.0"
 ```
 
 </Tip>
 
 ## Evaluation
 
-### Default evaluation (recommended)
+### Default local evaluation
 
 Evaluate on the medium difficulty split (a good balance of coverage and compute):
 
@@ -120,11 +128,11 @@ lerobot-train \
   --batch_size=4 \
   --eval.batch_size=1 \
   --eval.n_episodes=1 \
-  --eval_freq=1000
+  --env_eval_freq=1000
 ```
 
 ## Practical tips
 
 - Use the one-hot task conditioning for multi-task training (MT10/MT50 conventions) so policies have explicit task context.
 - Inspect the dataset task descriptions and the `info["is_success"]` keys when writing post-processing or logging so your success metrics line up with the benchmark.
-- Adjust `batch_size`, `steps`, and `eval_freq` to match your compute budget.
+- Adjust `batch_size`, `steps`, and `env_eval_freq` to match your compute budget.

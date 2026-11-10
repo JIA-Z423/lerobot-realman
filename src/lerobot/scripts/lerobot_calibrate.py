@@ -39,7 +39,10 @@ from lerobot.robots import (  # noqa: F401
     Robot,
     RobotConfig,
     bi_openarm_follower,
+    bi_rebot_b601_follower,
     bi_so_follower,
+    bi_yam_follower,
+    double_realman_follower,
     hope_jr,
     koch_follower,
     lekiwi,
@@ -47,24 +50,28 @@ from lerobot.robots import (  # noqa: F401
     omx_follower,
     openarm_follower,
     realman_follower,
+    rebot_b601_follower,
     so_follower,
-    double_realman_follower,
+    yam_follower,
 )
 from lerobot.teleoperators import (  # noqa: F401
     Teleoperator,
     TeleoperatorConfig,
     bi_openarm_leader,
+    bi_openarm_mini,
+    bi_rebot_102_leader,
     bi_so_leader,
+    double_rm_aloha_master,
     homunculus,
     koch_leader,
     make_teleoperator_from_config,
     omx_leader,
     openarm_leader,
     openarm_mini,
+    rebot_102_leader,
     rm_aloha_master,
     so_leader,
     unitree_g1,
-    double_rm_aloha_master,
 )
 from lerobot.utils.import_utils import register_third_party_plugins
 from lerobot.utils.utils import init_logging
@@ -75,18 +82,26 @@ class CalibrateConfig:
     teleop: TeleoperatorConfig | None = None
     robot: RobotConfig | None = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if bool(self.teleop) == bool(self.robot):
             raise ValueError("Choose either a teleop or a robot.")
 
-        self.device = self.robot if self.robot else self.teleop
+    @property
+    def device(self) -> RobotConfig | TeleoperatorConfig:
+        """The one device config given on the CLI (`__post_init__` enforces exactly one)."""
+        if self.robot is not None:
+            return self.robot
+        if self.teleop is not None:
+            return self.teleop
+        raise ValueError("Choose either a teleop or a robot.")
 
 
 @draccus.wrap()
-def calibrate(cfg: CalibrateConfig):
+def calibrate(cfg: CalibrateConfig) -> None:
     init_logging()
     logging.info(pformat(asdict(cfg)))
 
+    device: Robot | Teleoperator
     if isinstance(cfg.device, RobotConfig):
         device = make_robot_from_config(cfg.device)
     elif isinstance(cfg.device, TeleoperatorConfig):

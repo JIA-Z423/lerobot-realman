@@ -97,7 +97,9 @@ dataset:
   root: datasets/realman_double_arm_dataset
   # 当前机器实时 SVT-AV1 编码会拖慢采集主循环；先写入图片，episode 结束后再编码更稳定。
   streaming_encoding: false
-  vcodec: h264
+  rgb_encoder:
+    vcodec: h264
+  no_stamp: true
   num_image_writer_threads_per_camera: 4
   push_to_hub: false
 

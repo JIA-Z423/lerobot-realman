@@ -60,7 +60,7 @@ lerobot-train \
   --output_dir=outputs/train/act_your_dataset \
   --job_name=act_your_dataset \
   --policy.device=cuda \
-  --wandb.enable=true \
+  --trackio.enable=true \
   --policy.repo_id=${HF_USER}/act_policy
 ```
 
@@ -76,20 +76,16 @@ If your local computer doesn't have a powerful GPU, you can utilize Google Colab
 
 ## Evaluating ACT
 
-Once training is complete, you can evaluate your ACT policy using the `lerobot-record` command with your trained policy. This will run inference and record evaluation episodes:
+Once training is complete, you can evaluate your ACT policy on your robot with `lerobot-rollout`. The command below runs the policy for 60 seconds without recording anything (`--task` can be skipped for ACT). See [Policy Deployment](./inference) for strategies that record evaluation episodes.
 
 ```bash
-lerobot-record \
-  --robot.type=so100_follower \
+lerobot-rollout \
+  --strategy.type=base \
+  --policy.path=${HF_USER}/act_policy \
+  --robot.type=so101_follower \
   --robot.port=/dev/ttyACM0 \
-  --robot.id=my_robot \
   --robot.cameras="{ front: {type: opencv, index_or_path: 0, width: 640, height: 480, fps: 30}}" \
   --display_data=true \
-  --dataset.repo_id=${HF_USER}/eval_act_your_dataset \
-  --dataset.num_episodes=10 \
-  --dataset.single_task="Your task description" \
-  --dataset.streaming_encoding=true \
-  --dataset.encoder_threads=2 \
-  # --dataset.vcodec=auto \
-  --policy.path=${HF_USER}/act_policy
+  --task="Your task description" \
+  --duration=60
 ```

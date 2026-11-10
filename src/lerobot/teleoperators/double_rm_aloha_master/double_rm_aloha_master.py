@@ -18,7 +18,7 @@ from concurrent.futures import ThreadPoolExecutor, wait
 from functools import cached_property
 from typing import Any
 
-from lerobot.types import RobotAction
+from lerobot.lerobot_types import RobotAction
 from lerobot.utils.decorators import check_if_already_connected, check_if_not_connected
 
 from ..rm_aloha_master import RMAlohaMaster, RMAlohaMasterConfig

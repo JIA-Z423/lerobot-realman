@@ -15,26 +15,18 @@
 
 ## 1. 环境安装
 
-进入 LeRobot 环境：
-
-```bash
-conda activate lerobot
-export PYTHONPATH="$PWD/src${PYTHONPATH:+:$PYTHONPATH}"
-```
-
-检查主要依赖：
-
-```bash
-python -c "import serial, pyrealsense2, draccus; print('ok')"
-```
-
-本机已有环境时无需重新安装。新机器可参考仓库中的 [LeRobot 安装说明](source/installation.mdx)；本项目需要 Python 3.12+、采集依赖 `core_scripts`、RealSense 依赖 `intelrealsense`，以及视频处理工具 FFmpeg。使用 uv 时，可在项目根目录执行：
+此升级分支使用独立的 Python 3.12+ 环境；现有 `lerobot` Conda 环境继续供 `dev` 分支采集使用。在升级分支根目录执行：
 
 ```bash
 uv sync --locked --extra core_scripts --extra intelrealsense
+source .venv/bin/activate
+export PYTHONPATH="$PWD/src${PYTHONPATH:+:$PYTHONPATH}"
+python -c "import serial, pyrealsense2, draccus; print('ok')"
 ```
 
-uv 管理的环境中，将后文的 `python` 改为 `uv run python`，并使用 `uv run lerobot-dataset-viz` 等入口。本文后续示例沿用本机已安装的 Conda 环境。
+视频处理还需要 FFmpeg。PyTorch/CUDA 安装选择见 [LeRobot 安装说明](source/installation.mdx)。未激活环境时，将后文的 `python` 改为 `uv run python`，并使用 `uv run lerobot-dataset-viz` 等入口。
+
+从 0.5.2 迁移已有 `.local.yaml` 时，将 `dataset.vcodec: h264` 改为 `dataset.rgb_encoder.vcodec: h264`，并增加 `dataset.no_stamp: true`，以保持手动管理的数据集标识与续录方式。只在升级工作区保存迁移后的配置，原工作区保留原配置。
 
 ## 2. 硬件参数
 
@@ -81,7 +73,9 @@ dataset:
   episode_time_s: 8
   reset_time_s: 0
   streaming_encoding: false
-  vcodec: h264
+  rgb_encoder:
+    vcodec: h264
+  no_stamp: true
   push_to_hub: false
 
 robot:
