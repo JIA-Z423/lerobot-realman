@@ -1,5 +1,7 @@
 # RealMan 双臂操作与硬件检查手册
 
+适用分支：`upgrade/lerobot-v0.7.0`；源码包版本：`0.7.0`；数据集格式：`v3.0`。包版本与数据集格式是不同的版本标识。
+
 本文保存本项目的具体使用步骤：准备环境与本地配置、手动读取硬件、排查异常、采集与续录，以及检查保存的数据。所有命令默认在仓库根目录执行；本手册位于 `docs/` 下，但无需进入 `docs/` 运行命令。
 
 日常流程：准备环境和配置 → 手动运行 `--summary` → 确认所需设备读取通过 → 被动采集 → 检查数据。检查脚本由使用者按需运行，只读取反馈和图像。
@@ -15,18 +17,21 @@
 
 ## 1. 环境安装
 
-此升级分支使用独立的 Python 3.12+ 环境；现有 `lerobot` Conda 环境继续供 `dev` 分支采集使用。在升级分支根目录执行：
+在本分支根目录建立独立的 Python 3.12+ 环境。`core_scripts` 包含采集所需的数据集、硬件及可视化依赖，`intelrealsense` 提供腕部相机 SDK：
 
 ```bash
 uv sync --locked --extra core_scripts --extra intelrealsense
 source .venv/bin/activate
 export PYTHONPATH="$PWD/src${PYTHONPATH:+:$PYTHONPATH}"
 python -c "import serial, pyrealsense2, draccus; print('ok')"
+python -c "import importlib.metadata as m, lerobot; print('LeRobot', m.version('lerobot')); print(lerobot.__file__)"
 ```
 
-视频处理还需要 FFmpeg。PyTorch/CUDA 安装选择见 [LeRobot 安装说明](source/installation.mdx)。未激活环境时，将后文的 `python` 改为 `uv run python`，并使用 `uv run lerobot-dataset-viz` 等入口。
+确认打印的版本为 `0.7.0`，源码路径位于当前工作区。后文的 `python`、`rerun` 等命令均使用已激活的本分支 `.venv`；已完成同步但未激活时，可用 `uv run --no-sync python ...` 执行 Python 命令。安装后，`python -m lerobot.scripts.lerobot_record` 等模块命令也可使用 `lerobot-record` 等同名 CLI 入口。
 
-从 0.5.2 迁移已有 `.local.yaml` 时，将 `dataset.vcodec: h264` 改为 `dataset.rgb_encoder.vcodec: h264`，并增加 `dataset.no_stamp: true`，以保持手动管理的数据集标识与续录方式。只在升级工作区保存迁移后的配置，原工作区保留原配置。
+视频处理还需要在 `PATH` 中可用的 `ffmpeg`、`ffprobe` 及解码所需的 FFmpeg 库。PyTorch/CUDA 安装选择见 [LeRobot 安装说明](source/installation.mdx)。工作区移动或重新创建后，应在新路径重新准备环境。
+
+从 `dev` 的 `0.5.2` 迁移时，在本工作区安装新版依赖，并按第 3 节迁移配置。首次升级验证使用过共享系统依赖的临时 `.venv`；其测试结果及开发工具依赖冲突记录在[升级评估](lerobot_upstream_upgrade_2026-11-10.md)，不能替代干净环境验收。
 
 ## 2. 硬件参数
 
@@ -60,13 +65,14 @@ cp -n configs/hardware/realman_double_arm_hardware_config.yaml \
 
 随后编辑 `.local.yaml`：填写两侧从臂地址、主手串口、相机序列号，以及下表中的采集参数。不要将模板占位符直接用于连接设备。
 
-关键默认项：
+以下是公开模板中的关键字段摘录，不能替代包含左右硬件参数的完整模板：
 
 ```yaml
 passive_recording: true
 
 dataset:
   repo_id: local/realman_double_arm_dataset
+  single_task: RealMan double-arm passive data collection
   root: datasets/realman_double_arm_dataset
   num_episodes: 1
   fps: 30
@@ -90,21 +96,37 @@ teleop:
 | 字段 | 设置方法 |
 | --- | --- |
 | `dataset.repo_id` | 数据集标识，如 `local/realman_double_arm_dataset`；本地保存时无需上传 |
+| `dataset.no_stamp` | 模板为 `true`，新建录制保持原始 `repo_id`；配置类默认 `false` 会为新录制的标识追加时间后缀 |
 | `dataset.root` | 首次采集使用新目录；同一目录用于后续续录和可视化 |
 | `dataset.single_task` | 填写实际任务描述，避免一直使用通用的检查说明 |
 | `dataset.num_episodes` / `episode_time_s` / `fps` | 分别设置采集段数、每段时长和目标采样频率 |
+| `dataset.streaming_encoding` / `rgb_encoder.vcodec` | 模板为 `false` / `h264`，先写图像，再在保存 episode 时编码 |
 | `robot.left_arm_config` / `right_arm_config` | 分别核对从臂地址、RM+ 夹爪配置和相机序列号 |
 | `teleop.left_arm_config` / `right_arm_config` | 分别核对主手串口、460800 波特率及归一化比例 |
 
+从旧版本迁移时核对：
+
+| 旧配置或调用 | 本分支的写法与行为 |
+| --- | --- |
+| `dataset.vcodec: h264` / `--dataset.vcodec=h264` | 改为 YAML 中的 `dataset.rgb_encoder.vcodec` / CLI 的 `--dataset.rgb_encoder.vcodec=h264`；删除旧字段 |
+| 省略 `dataset.no_stamp` | 如需使用本手册的固定标识，显式设为 `true`；已有带时间后缀的数据集续录时使用其实际标识 |
+| 使用 `lerobot-record --policy.*` 运行策略 | 新版 `RecordConfig` 没有 `policy` 字段，采集必须有 `teleop`；策略部署入口为 `lerobot-rollout` |
+
+完整采集配置由 [RecordConfig](../src/lerobot/scripts/lerobot_record.py) 和共享的 [DatasetRecordConfig](../src/lerobot/configs/dataset.py) 定义。采集命令使用 `--config_path`（下划线）；分项检查器和夹爪监视器使用 `--config-path`（连字符）。硬件检查器读取 YAML 中的设备字段，检查通过不等于整个采集配置已通过 0.7.0 解析。
+
+被动采集需要主手提供 `action`，并要求主手与从臂的动作字段完全匹配。两侧从臂的 `initialize_gripper_route`、`initialize_gripper_modbus`、`enable_calibration` 都须为 `false`；任一项为 `true` 时，采集在创建设备前报错。模板已关闭 route 初始化，其余两项的配置默认值为 `false`。
+
 当前双臂夹爪是正式采集 schema 的一部分。公开模板和本地配置使用 `gripper_feedback_source: rm_plus`，读取 `get_rm_plus_state_info.state_info.pos[0]`，按 `gripper_scale=1000.0` 归一化；它不是毫米。默认数据为左右各 6 轴 + 夹爪，共 `14` 维 action/state。RM+ 适配当前只支持读取，发送动作会明确报错。普通原生夹爪可显式使用 `gripper_feedback_source: native`。
+
+本机 RM+ 配置保持 `sdk_backend: socket_json`，且不设置 `gripper_position_register`。配置类会拒绝 RM+ 与 SDK 后端或普通寄存器反馈的组合；公开模板中的 SDK 切换注释不适用于当前 RM+ 夹爪配置。
 
 配置中的 `control_hz` 仅作为兼容字段保留；被动硬件遥操作模式下，LeRobot 不控制主从臂闭环，只按 `dataset.fps` 采样主手动作、从臂状态和相机帧。
 
 ## 4. 手动硬件检查
 
-以下命令在项目根目录、已激活的 `lerobot` 环境中运行。它们只查询反馈或读取相机图像，不下发机械臂、夹爪动作，也不自动初始化夹爪或切换通信协议。检查前先退出占用主手串口或相机的采集程序、相机查看器。
+以下命令在项目根目录、第 1 节准备并激活的 `.venv` 中运行。它们查询从臂反馈、向主手串口发送状态查询或读取相机图像，不下发机械臂、夹爪目标，也不自动初始化夹爪或切换通信协议。检查前先退出占用主手串口或相机的采集程序、相机查看器。
 
-最近一次实机检查已确认：两侧 CTAG2F120 的 RM_ARM+ 位置反馈有效；两个腕部 D435 在重新上电后均能识别，并曾同时取得 `640×480、30 fps` RGB 图像。当前没有顶部相机。**这些是已有验证结果，每次重新连接、上电后仍应按下面的方法复查。**
+升级前的实机检查已确认：两侧 CTAG2F120 的 RM_ARM+ 位置反馈有效；两个腕部 D435 在重新上电后均能识别，并曾同时取得 `640×480、30 fps` RGB 图像。当前没有顶部相机。**这些是历史硬件验证结果，0.7.0 的实机采集仍需复查；每次重新连接、上电后也应重新检查。**
 
 ### 4.1 手动简洁检查（日常使用）
 
@@ -132,7 +154,7 @@ PYTHONPATH=src python examples/realman/check_realman_readonly.py --summary
 
 只想查某一部分，可加 `--skip-masters`、`--skip-followers` 或 `--skip-cameras`，未检查项会显示 `[跳过]`。夹爪有疑问时再使用 4.2 的连续监视器；相机有疑问时再按 4.3 查看画面。
 
-需要保留详细回包供排查时，再加输出参数：
+需要保留详细回包供排查时，再加输出参数；该检查器的 `--output` 会覆盖同名 JSON，需留存多次结果时使用不同文件名：
 
 ```bash
 PYTHONPATH=src python examples/realman/check_realman_readonly.py \
@@ -161,7 +183,7 @@ python -m json.tool /tmp/realman-readonly.json
 
 同时查看报告顶层及各设备的 `error`、`connection_error`、`close_error`。`skipped` 列出的设备没有参加检查，不能判为通过。分项排查可追加 `--skip-cameras`、`--skip-masters` 或 `--skip-followers`。
 
-默认不探测普通 Modbus 寄存器；不要为了修复 RM+ 反馈而直接添加 `--probe-modbus` 或修改协议。RM+ 管理末端链路时，普通 Modbus 查询可能超时，且当前普通 Modbus 备用路径尚未完成实机验收。
+默认不探测普通 Modbus 寄存器；不要为了修复 RM+ 反馈而直接添加 `--probe-modbus` 或修改协议。`--probe-modbus` 只接受不带 `--summary` 的详细 JSON 模式，不能与简洁模式组合。RM+ 管理末端链路时，普通 Modbus 查询可能超时，且当前普通 Modbus 备用路径尚未完成实机验收。
 
 ### 4.2 夹爪：确认读取了正确反馈，正确理解 0
 
@@ -173,6 +195,7 @@ gripper_feedback_source: rm_plus
 gripper_scale: 1000.0
 initialize_gripper_route: false
 initialize_gripper_modbus: false
+enable_calibration: false
 ```
 
 使用与正式采集相同的位置解析器，连续观察两侧夹爪 10 秒：
@@ -259,7 +282,7 @@ ls -l /dev/serial/by-id/
 
 ## 5. 数据采集
 
-先完成第 4 节的手动检查，再由外部 RealMan 系统负责主从遥操作。LeRobot 在 `passive_recording: true` 下只记录，不发送主从动作。
+先完成第 4 节的手动检查，再由外部 RealMan 系统负责主从遥操作。LeRobot 在 `passive_recording: true` 下读取主手动作、从臂反馈及相机；录制与中间重置阶段均跳过 `robot.send_action`。重置阶段仍会读取设备，但不写入 episode，也不主动复位机械臂。
 
 模板为 `1` 个 episode、每段 `8` 秒、目标 `30 FPS`。**实际参数以本地 YAML 和命令行覆盖值为准**。为使下文的采集、续录和可视化示例使用同一数据集，下面显式指定数据集标识和目录；如已有同名目录，请换用新目录，或在确认配置一致后选择续录。
 
@@ -270,20 +293,24 @@ python -m lerobot.scripts.lerobot_record \
   --config_path=configs/hardware/realman_double_arm_hardware_config.local.yaml \
   --dataset.repo_id=local/realman_double_arm_dataset \
   --dataset.root=datasets/realman_double_arm_dataset \
+  --dataset.no_stamp=true \
   --play_sounds=false
 ```
 
-如需临时修改保存目录或 episode 数量，可以在命令行覆盖：
+如需临时修改保存目录、episode 数量或编码配置，可以在命令行覆盖：
 
 ```bash
 python -m lerobot.scripts.lerobot_record \
   --config_path=configs/hardware/realman_double_arm_hardware_config.local.yaml \
   --dataset.root=datasets/realman_double_arm_test \
   --dataset.num_episodes=3 \
+  --dataset.rgb_encoder.vcodec=h264 \
   --play_sounds=false
 ```
 
-续录时使用与原数据集相同的 `repo_id`、目录、相机配置和数据维度。仅当需要追加到已有数据集时加 `--resume=true`：
+续录时使用与原数据集相同的实际 `repo_id`、目录、机器人类型、FPS、相机配置和数据字段。`--resume=true` 通过 `LeRobotDataset.resume` 追加，本次 `dataset.num_episodes` 表示新增段数；续录不会再次给标识加时间后缀。若旧录制曾开启自动命名，应使用当时实际生成的带后缀标识。
+
+例如，向同一数据集再追加 1 个 episode：
 
 ```bash
 python -m lerobot.scripts.lerobot_record \
@@ -291,10 +318,19 @@ python -m lerobot.scripts.lerobot_record \
   --dataset.repo_id=local/realman_double_arm_dataset \
   --dataset.root=datasets/realman_double_arm_dataset \
   --resume=true \
+  --dataset.num_episodes=1 \
   --play_sounds=false
 ```
 
-等待当前 episode 的图像写入、H.264 编码和数据保存完成后，再退出或检查文件。诊断数据、历史夹爪恒零数据与新示教数据应分目录保留，不能因字段同名就直接混合训练。
+交互式终端支持以下录制控制；使用终端键盘后端时保持该终端聚焦。无可用显示且标准输入不是 TTY 时没有键盘监听，录制按配置的时长和段数运行。
+
+| 按键 | 行为 |
+| --- | --- |
+| `n` / 右方向键 | 提前结束当前录制或重置阶段 |
+| `r` / 左方向键 | 丢弃当前 episode 缓冲并重新录制 |
+| `q` / `Esc` | 结束录制流程，等待保存及清理完成 |
+
+等待 episode 的图像写入、H.264 编码和数据保存完成后，再退出或检查文件。优先使用 `q` / `Esc` 完成结束流程；`Ctrl+C` 中断不能视为当前未保存 episode 已落盘。诊断数据、历史夹爪恒零数据与新示教数据应分目录保留，不能因字段同名就直接混合训练。
 
 ## 6. 数据格式
 
@@ -308,6 +344,8 @@ python -m lerobot.scripts.lerobot_record \
 | `observation.images.right_wrist` | 右腕 RGB 视频 |
 
 正式 14 维顺序为左侧 6 个关节、左夹爪、右侧 6 个关节、右夹爪；夹爪索引为 6、13（从 0 开始）。关节与夹爪的比例来自各自配置，主手和从臂的物理映射及标尺仍需在正式示教前核对。
+
+默认数值特征名依次为 `left_joint_1.pos` 至 `left_joint_6.pos`、`left_gripper.pos`，再到 `right_joint_1.pos` 至 `right_joint_6.pos`、`right_gripper.pos`。视频字段由左右相机的 `wrist` 配置形成；具体字段、形状与文件路径以本次数据集的 `meta/info.json` 为准。该分支写入的 Dataset 格式仍为 `v3.0`，不是 `v0.7.0`。
 
 按 30 FPS 保存时，每个 8 秒 episode 目标约为 240 帧：
 
@@ -329,7 +367,8 @@ datasets/realman_double_arm_dataset/
 使用 LeRobot 数据集可视化工具查看视频、动作、状态和时间轴：
 
 ```bash
-lerobot-dataset-viz \
+python -m lerobot.scripts.lerobot_dataset_viz \
+  --display-mode=rerun \
   --repo-id local/realman_double_arm_dataset \
   --root datasets/realman_double_arm_dataset \
   --episode-index 0
@@ -340,7 +379,8 @@ lerobot-dataset-viz \
 ```bash
 mkdir -p visualizations
 
-lerobot-dataset-viz \
+python -m lerobot.scripts.lerobot_dataset_viz \
+  --display-mode=rerun \
   --repo-id local/realman_double_arm_dataset \
   --root datasets/realman_double_arm_dataset \
   --episode-index 0 \
@@ -357,7 +397,7 @@ rerun visualizations/local_realman_double_arm_dataset_episode_0.rrd
 只查看数据集基本信息：
 
 ```bash
-lerobot-edit-dataset \
+python -m lerobot.scripts.lerobot_edit_dataset \
   --repo_id local/realman_double_arm_dataset \
   --root datasets/realman_double_arm_dataset \
   --operation.type=info
@@ -366,7 +406,7 @@ lerobot-edit-dataset \
 视频实际路径以 `meta/info.json` 中的路径模板和生成文件为准。下面以左腕视频常见路径为例查看编码、尺寸和文件帧率，右腕也应检查：
 
 ```bash
-conda run -n lerobot ffprobe \
+ffprobe \
   -v error \
   -select_streams v:0 \
   -show_entries stream=codec_name,width,height,avg_frame_rate,nb_frames,duration \
@@ -380,12 +420,15 @@ conda run -n lerobot ffprobe \
 
 当前默认先写入图像，在 episode 结束后进行 H.264 编码。两路图像写入和编码加入后的持续采集性能应在目标电脑上验收；修改线程数、编码方式或硬件编码后也应重新测量。没有顶部相机时保持对应配置注释。
 
-当前 RM+ 通用动作接口保留拒绝发送保护。模型训练功能来自 LeRobot，但本机 RealMan 的策略训练效果和实际闭环部署尚未完成验收；不能直接把被动采集配置切成主动控制，就认为已具备策略部署能力。
+`lerobot-record` 仅用于有主手输入的示教采集，不接受旧版 `--policy.*` 参数。模型训练入口为 `lerobot-train`，需要额外安装 `training` 及所选 policy 的依赖；第 1 节的采集安装命令不包含所有模型依赖。0.7.0 的训练跟踪使用 `trackio` 配置。
+
+策略推理和执行入口为 `lerobot-rollout`，详见[策略部署说明](source/inference.mdx)。本分支已注册 RealMan 类型，但 RM+ 后端仍拒绝发送动作，RealMan 策略训练效果和实际闭环部署也未验收；不能直接把被动采集配置切成主动控制就用于策略执行。
 
 | 资料 | 用途 |
 | --- | --- |
 | [项目首页](../README.md) | 项目介绍、当前能力与快速开始 |
 | [夹爪修复与实机验证记录](realman_data_collection_check.md) | 恒零原因、实机证据、设备身份及已知限制 |
+| [0.7.0 升级评估与离线验证](lerobot_upstream_upgrade_2026-11-10.md) | 升级基线、配置与接口变化、历史离线证据及复现方法 |
 | [只读检查脚本](../examples/realman/check_realman_readonly.py) | 简洁结果及可选 JSON 报告 |
 | [夹爪连续监视器](../examples/realman/watch_realman_gripper.py) | 连续查看 RM+ 原始位置和归一化反馈 |
 | [离线采集管道检查](../examples/realman/audit_offline_pipeline.py) | 使用模拟传输验证适配与保存流程，不连接硬件 |

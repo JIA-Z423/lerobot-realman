@@ -1,13 +1,17 @@
 # LeRobot 上游升级验证（2026-11-10）
 
-## 当前版本和隔离方式
+本文记录首次升级评估时的基线、环境和测试结果。当前 `upgrade/lerobot-v0.7.0` 分支源码版本为 `0.7.0`；日常运行以[操作手册](realman_usage.md)为准。下文 `/tmp` 审计路径是当次产物位置，不保证长期保留，也不作为当前工作区路径。
 
-- 当前开发分支：`dev`。本次首先将原有改动提交为 `04fb806`（完善 RealMan 只读检查摘要和操作文档）。
-- 当前源码 `pyproject.toml` 和原 Conda 环境安装元数据均为 `0.5.2`；Python 为 `3.12.13`。由于本仓库以整树导入开始，不能据此还原准确的原始上游提交。
-- 核查到的上游最新稳定版：`v0.7.0`，2026-11-05 发布，提交 `410c095eacc0011d998a73383eb94abed2715af0`。GitHub Release、Git tag 和 PyPI 均一致。
-- 升级候选分支：`upgrade/lerobot-v0.7.0`，工作区 `/tmp/lerobot-upgrade-v0.7.0`。当前仓库继续留在 `dev`。
+<a id="当前版本和隔离方式"></a>
+
+## 评估时的版本和隔离方式
+
+- 升级基线分支：`dev`。原有改动首先提交为 `04fb806`（完善 RealMan 只读检查摘要和操作文档）。
+- 升级前的源码 `pyproject.toml` 和原 Conda 环境安装元数据均为 `0.5.2`；Python 为 `3.12.13`。由于旧仓库以整树导入开始，不能据此还原准确的原始上游提交。
+- 2026-11-10 评估时核查的上游稳定版：`v0.7.0`，2026-11-05 发布，提交 `410c095eacc0011d998a73383eb94abed2715af0`。GitHub Release、Git tag 和 PyPI 当时一致。
+- 升级候选分支：`upgrade/lerobot-v0.7.0`，迁移提交为 `9f74d2c`。首次评估工作区位于 `/tmp/lerobot-upgrade-v0.7.0`，现已移至 `/home/nuaacmee/lerobot-v0.7.0`；使用 `git worktree list` 查询实际位置。
 - 候选以当前开发提交为第一父提交、稳定版标签为第二父提交接入上游历史，再应用稳定版文件并移植本地适配；不使用冲突自动覆盖本地代码。初次 fetch 仅获取稳定版快照，上游历史为浅历史，后续需要时可以补全。
-- 原 Conda 环境没有 `uv`。本次使用已有解释器创建候选专用 `.venv`，通过 `--system-site-packages` 只读复用现有 PyTorch/视频等大型依赖，在候选环境内安装所需的新版本。没有在原 Conda 环境原位升级。
+- 评估时原 Conda 环境没有 `uv`，因此使用已有解释器创建候选专用 `.venv`，通过 `--system-site-packages` 只读复用现有 PyTorch/视频等大型依赖，在候选环境内安装所需的新版本。没有在原 Conda 环境原位升级；这不是推荐的干净环境安装流程。
 
 官方来源：[GitHub Release](https://github.com/huggingface/lerobot/releases/tag/v0.7.0)、[PyPI](https://pypi.org/project/lerobot/)、[发布介绍](https://huggingface.co/blog/lerobot/lerobot-release-v070)。
 
@@ -68,9 +72,13 @@ passive_recording: true
 
 ## 复现候选离线验证
 
+在实际的升级分支根目录执行；本机现有路径为 `/home/nuaacmee/lerobot-v0.7.0`，其他机器以 `git worktree list` 的输出为准。以下在采集依赖之外增加 `test` extra，重新准备本工作区的环境：
+
 ```bash
-cd /tmp/lerobot-upgrade-v0.7.0
-PYTHONPATH=src .venv/bin/python -m pytest \
+uv sync --locked --extra core_scripts --extra intelrealsense --extra test
+source .venv/bin/activate
+export PYTHONPATH="$PWD/src${PYTHONPATH:+:$PYTHONPATH}"
+python -m pytest \
   tests/common/test_realman_client.py \
   tests/common/test_realman_reconnect.py \
   tests/common/test_realman_readonly.py \
@@ -80,7 +88,7 @@ PYTHONPATH=src .venv/bin/python -m pytest \
   tests/test_control_robot.py -q -p no:cacheprovider
 
 # 输出目录必须尚不存在，--datasets 空列表避免扫描现有采集数据。
-PYTHONPATH=src .venv/bin/python examples/realman/audit_offline_pipeline.py \
+python examples/realman/audit_offline_pipeline.py \
   --output /tmp/realman-upstream-candidate-new-run --datasets
 ```
 
@@ -90,4 +98,4 @@ PYTHONPATH=src .venv/bin/python examples/realman/audit_offline_pipeline.py \
 
 训练还涉及 W&B → Trackio、FSDP2/HSDP、dtype / PolicyOutput 和部分旧断点恢复方式的变化。真实相机采集、双路视频持续 30 FPS、GPU 训练、新 policy 权重和实机闭环均需各自验证。本次离线验证不等于这些能力的实机验收。
 
-当前 `dev` 及原环境继续用于集成开发；升级候选通过验收后再决定是否合入。代码提交保存在 Git 分支中，`/tmp` 环境与审计产物需在系统清理前另行保存。
+`dev` 的旧环境与本分支的 0.7.0 环境分别维护，升级候选通过实机等验收后再决定是否合入。代码提交保存在 Git 分支中；工作区移动后应重新准备环境，历史 `/tmp` 审计产物需在系统清理前另行保存。

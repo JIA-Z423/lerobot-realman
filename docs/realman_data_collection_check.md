@@ -2,7 +2,9 @@
 
 实机检查：2026-11-02；软件复核：2026-11-03；操作文档整理：2026-11-06。本文汇总本机 RealMan 双臂接入 LeRobot 的检查结论，替代此前按日期分散保存的审计报告。重复日志、临时数据集和一次性动作脚本已清理。
 
-具体使用步骤统一见[操作与硬件检查手册](realman_usage.md)，本文保留修复原因、实机证据和已知限制。
+本文的实机结果来自升级前的 `0.5.2` 环境。`upgrade/lerobot-v0.7.0` 分支的源码版本已为 `0.7.0`，完成的是离线迁移验证；这些历史实机结果不表示新版已完成硬件验收。
+
+当前使用步骤统一见[0.7.0 操作与硬件检查手册](realman_usage.md)，本文保留修复原因、实机证据和已知限制。
 
 ## 1. 夹爪恒零的原因及修复
 
@@ -23,7 +25,9 @@ get_rm_plus_state_info.state_info.pos[0] / 1000
 
 历史 `has_gripper=false` 配置还曾直接产生占位零。旧 episode 没有保留当时原始回包，不能把所有历史零值逐一归因于本次接口错配。
 
-## 2. 当前设备和配置
+<a id="2-当前设备和配置"></a>
+
+## 2. 实机验证时的设备和配置
 
 | 项目 | 左侧 | 右侧 |
 | --- | --- | --- |
@@ -36,6 +40,8 @@ get_rm_plus_state_info.state_info.pos[0] / 1000
 
 主手串口为 460800 baud；USB 名称变化时，可按已确认的物理身份改用 `/dev/serial/by-id/` 路径。上表主手左右沿用本地配置，尚未通过主手动作独立标定。
 
+上表是历史设备记录，不能替代运行前对当前连接和本地配置的核对。
+
 使用本地 `configs/hardware/realman_double_arm_hardware_config.local.yaml`，公开参考为[配置模板](../configs/hardware/realman_double_arm_hardware_config.yaml)。两从臂保持：
 
 ```yaml
@@ -45,9 +51,12 @@ gripper_feedback_source: rm_plus
 gripper_scale: 1000.0
 initialize_gripper_route: false
 initialize_gripper_modbus: false
+enable_calibration: false
 ```
 
 顶层保持 `passive_recording: true`。正式采集由外部 RealMan 系统负责主从控制，LeRobot 读取并保存数据。RM+ 通用动作接口仍有拒绝发送保护；采集启动前也会拒绝夹爪初始化或校准配置。
+
+在 0.7.0 中，视频编码使用 `dataset.rgb_encoder.vcodec: h264`，固定数据集标识使用 `dataset.no_stamp: true`。旧 `dataset.vcodec` 字段需删除；完整配置以本分支[公开模板](../configs/hardware/realman_double_arm_hardware_config.yaml)为准。
 
 当前没有顶部相机。两个腕部 D435 曾完全无法枚举，重新上电后均恢复 USB 3.2 识别，并通过双路 640×480、30 fps RGB 同时取帧检查。没有修改序列号；此前不可见的具体供电、线束或 Hub 原因未确定。
 
@@ -71,11 +80,12 @@ initialize_gripper_modbus: false
 
 ## 4. 采集前的只读复查
 
-日常可在项目根目录使用既有 `lerobot` 环境，手动运行简洁检查：
+在本分支根目录，先按[环境安装](realman_usage.md#1-环境安装)完成 0.7.0 依赖准备，再手动运行简洁检查：
 
 ```bash
-conda activate lerobot
-PYTHONPATH=src python examples/realman/check_realman_readonly.py --summary
+source .venv/bin/activate
+export PYTHONPATH="$PWD/src${PYTHONPATH:+:$PYTHONPATH}"
+python examples/realman/check_realman_readonly.py --summary
 ```
 
 [分项检查器](../examples/realman/check_realman_readonly.py)使用查询白名单，简洁模式显示两侧从臂、夹爪、主手和相机共 8 项结果；异常时返回非零退出码。日常无需读取 JSON，需留存原始回包时再添加 `--output`。仅使用详细报告模式、不加 `--summary` 时，退出成功仍只代表报告生成。
@@ -98,4 +108,4 @@ PYTHONPATH=src python examples/realman/check_realman_readonly.py --summary
 
 离线验证保留[完整采集管道检查脚本](../examples/realman/audit_offline_pipeline.py)及 `tests/common/test_realman_*.py` 中的反馈、只读、重连和被动录制回归测试。一次性动作探针及其快照不作为维护入口保留。
 
-本仓库是定制的 LeRobot 源码快照。Python 包版本 0.5.2 与 Dataset v3.0 是不同版本标识，不能据此推定精确上游 tag；升级依赖不是本次修复夹爪恒零的前提。
+夹爪恒零修复最初在定制的 `0.5.2` 源码快照完成；该旧快照没有保留可直接追溯的上游共同历史。当前分支基于上游 `v0.7.0` 并保留了修复，Dataset 格式仍为 `v3.0`。包版本、数据集格式及本记录的验证日期应分别理解；升级本身不会修复历史夹爪数据。新版的离线迁移证据及复现方法见[升级评估](lerobot_upstream_upgrade_2026-11-10.md)。

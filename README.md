@@ -1,6 +1,6 @@
 # LeRobot × RealMan 双臂
 
-本升级候选基于 LeRobot `v0.7.0`，保留 RealMan 被动采集适配；请使用独立环境和迁移后的配置，见[操作手册](docs/realman_usage.md#1-环境安装)。当前 `dev` 分支仍供原有采集开发使用。
+本页适用于 `upgrade/lerobot-v0.7.0` 分支，源码版本为 LeRobot `0.7.0`。请使用本分支的独立环境和配置；从 `dev` 的 `0.5.2` 环境迁移时，先按[操作手册](docs/realman_usage.md#1-环境安装)准备环境，再核对[配置差异](docs/realman_usage.md#3-配置文件)。
 
 基于 [Hugging Face LeRobot](https://github.com/huggingface/lerobot) 的 RealMan 双臂数据采集适配，面向 ALOHA 风格的双主手、双从臂和腕部相机平台。
 
@@ -28,25 +28,26 @@ flowchart LR
 
 | 能力 | 状态 |
 | --- | --- |
-| 双主手、双从臂与夹爪采集适配 | 已集成；RM+ 反馈和真实采集落盘已验证 |
-| 两路腕部 D435 | 已验证识别及同时取帧；带双路视频编码的持续 30 FPS 性能待验收 |
-| 策略训练 | 保留上游 ACT、Diffusion、SmolVLA、π 系列等实现；RealMan 任务训练效果待验证 |
-| RealMan 策略部署 | 待补充控制适配及验收；当前 RM+ 通用动作接口保留拒绝发送保护 |
+| 双主手、双从臂与夹爪采集适配 | 已迁移到 0.7.0，离线录制与落盘审计通过；升级前的实机反馈验证见历史记录 |
+| 两路腕部 D435 | 升级前已验证识别及同时取帧；0.7.0 下实机采集、双路编码与持续 30 FPS 待验收 |
+| 策略训练 | 提供上游 ACT、Diffusion、SmolVLA、π 系列等实现；需另装训练及所选策略依赖，RealMan 训练效果待验证 |
+| RealMan 策略部署 | 0.7.0 入口为 `lerobot-rollout`；当前 RM+ 适配仍拒绝发送动作，控制适配与实机验收待完成 |
 
 `action` 来自主手测量，`observation.state` 来自从臂反馈，两者各为左右六关节加夹爪。详细数据含义与验收范围见[操作手册](docs/realman_usage.md)。
 
 ## 快速开始
 
-以下命令在项目根目录执行，适用于本机已有的 `lerobot` Conda 环境。新机器请先按[环境与配置说明](docs/realman_usage.md#1-环境安装)完成安装。
+以下命令在本分支的项目根目录执行。安装命令创建或同步本目录的 `.venv`；后续命令使用已激活的该环境。FFmpeg 与 PyTorch/CUDA 的准备见[环境说明](docs/realman_usage.md#1-环境安装)。
 
 ### 1. 准备环境与配置
 
 ```bash
-conda activate lerobot
+uv sync --locked --extra core_scripts --extra intelrealsense
+source .venv/bin/activate
 export PYTHONPATH="$PWD/src${PYTHONPATH:+:$PYTHONPATH}"
 ```
 
-根据[配置模板](configs/hardware/realman_double_arm_hardware_config.yaml)准备 `configs/hardware/realman_double_arm_hardware_config.local.yaml`，填写真实设备参数和任务信息。已有本地配置时直接核对使用；本地配置不提交 Git。
+根据[配置模板](configs/hardware/realman_double_arm_hardware_config.yaml)准备 `configs/hardware/realman_double_arm_hardware_config.local.yaml`，填写真实设备参数和任务信息。旧配置的 `dataset.vcodec` 需迁移为 `dataset.rgb_encoder.vcodec`；保持 `dataset.no_stamp: true` 以使用固定数据集标识。本地配置不提交 Git。
 
 ### 2. 手动检查硬件
 
@@ -61,10 +62,11 @@ python examples/realman/check_realman_readonly.py --summary
 ```bash
 python -m lerobot.scripts.lerobot_record \
   --config_path=configs/hardware/realman_double_arm_hardware_config.local.yaml \
+  --dataset.no_stamp=true \
   --play_sounds=false
 ```
 
-本地配置保持 `passive_recording: true`、两侧夹爪初始化关闭。任务描述、输出目录、episode 数量和目标采样频率由配置决定。续录、数据格式及可视化见[操作手册](docs/realman_usage.md#5-数据采集)。
+本地配置保持 `passive_recording: true`，两侧的 `initialize_gripper_route`、`initialize_gripper_modbus` 和 `enable_calibration` 均为 `false`。`lerobot-record` 需要主手提供动作，仅用于示教采集；策略推理使用 `lerobot-rollout`。续录、数据格式及可视化见[操作手册](docs/realman_usage.md#5-数据采集)。
 
 ## 文档
 
@@ -72,6 +74,7 @@ python -m lerobot.scripts.lerobot_record \
 | --- | --- |
 | [操作与硬件检查手册](docs/realman_usage.md) | 环境、本地配置、手动检查、异常排查、采集、续录和数据查看 |
 | [夹爪修复与实机验证记录](docs/realman_data_collection_check.md) | 恒零原因、修复链路、设备信息、验证证据与限制 |
+| [0.7.0 升级评估与离线验证](docs/lerobot_upstream_upgrade_2026-11-10.md) | 版本与接口变化、迁移内容、历史测试证据及复现方法 |
 | [上游文档源码](docs/source/) | 策略、数据集、训练与硬件接口的 LeRobot 文档 |
 | [贡献指南](CONTRIBUTING.md) | 上游开发与贡献规范 |
 
