@@ -24,7 +24,8 @@ on:
 
   pull_request:
     branches:
-      - main
+      - dev
+      - upgrade/lerobot-v0.7.0
     paths:
       - "src/**"
       - "tests/**"
@@ -34,7 +35,8 @@ on:
       - "Makefile"
   push:
     branches:
-      - main
+      - dev
+      - upgrade/lerobot-v0.7.0
     paths:
       - "src/**"
       - "tests/**"
