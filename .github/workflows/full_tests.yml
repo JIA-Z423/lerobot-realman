@@ -23,7 +23,8 @@ on:
     types: [submitted]
   push:
     branches:
-      - main
+      - dev
+      - upgrade/lerobot-v0.7.0
     paths:
       - "src/**"
       - "tests/**"
