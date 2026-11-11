@@ -16,14 +16,13 @@ limitations under the License.
 
 # RealMan 项目文档
 
-以下使用说明面向 `upgrade/lerobot-v0.7.0` 分支和 LeRobot `0.7.0`。运行前请按操作手册准备本分支的 `.venv` 及迁移后的本地 YAML；旧版实机检查结论保留在历史记录中，不代表新版已完成实机验收。
+以下使用说明面向 `upgrade/lerobot-v0.7.0` 分支和 LeRobot `0.7.0`。运行前请按操作手册准备本分支的 `lerobot070` Conda 环境及迁移后的本地 YAML；旧版实机检查结论保留在历史记录中，不代表新版已完成实机验收。
 
 | 文档 | 用途 |
 | --- | --- |
 | [项目首页](../README.md) | 项目介绍、主要能力、当前状态与快速开始 |
 | [RealMan 双臂操作与硬件检查手册](realman_usage.md) | 0.7.0 环境、配置迁移、检查、被动采集、续录、数据查看与策略入口 |
 | [RealMan 双臂采集检查与夹爪反馈说明](realman_data_collection_check.md) | 升级前的夹爪修复原因、实机证据，以及本分支复查方式 |
-| [LeRobot 0.7.0 升级评估与离线验证](lerobot_upstream_upgrade_2026-11-10.md) | 升级基线、接口变化、离线测试证据与复现命令 |
 
 以下内容为上游 LeRobot 文档站的构建与维护说明。
 

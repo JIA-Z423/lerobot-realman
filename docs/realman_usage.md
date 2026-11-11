@@ -14,24 +14,36 @@
 - [6. 数据格式](#6-数据格式)
 - [7. 数据可视化](#7-数据可视化)
 - [8. 使用范围与相关资料](#8-使用范围与相关资料)
+- [9. 策略训练](#9-策略训练)
 
 ## 1. 环境安装
 
-在本分支根目录建立独立的 Python 3.12+ 环境。`core_scripts` 包含采集所需的数据集、硬件及可视化依赖，`intelrealsense` 提供腕部相机 SDK：
+新机器先准备 Git 和 [Conda（Miniforge）](https://conda-forge.org/download/)，获取本分支源码；已有源码时跳过此步：
 
 ```bash
-uv sync --locked --extra core_scripts --extra intelrealsense
-source .venv/bin/activate
+git clone --branch upgrade/lerobot-v0.7.0 https://github.com/JIA-Z423/lerobot-realman.git lerobot-realman-v070
+cd lerobot-realman-v070
+```
+
+请安装本仓库源码，公开 PyPI 包不包含这里的 RealMan 定制适配。以下安装和运行命令都在项目根目录执行。
+
+在本分支根目录使用 Conda 建立独立的 Python 3.12 环境 `lerobot070`，与 `dev` 的 `lerobot` 环境分别维护。`core_scripts` 包含采集所需的数据集、硬件及可视化依赖，`intelrealsense` 提供腕部相机 SDK：
+
+```bash
+conda create -n lerobot070 python=3.12 pip -y
+conda activate lerobot070
+conda install -c conda-forge ffmpeg -y
+python -m pip install -e ".[core_scripts,intelrealsense]"
 export PYTHONPATH="$PWD/src${PYTHONPATH:+:$PYTHONPATH}"
 python -c "import serial, pyrealsense2, draccus; print('ok')"
 python -c "import importlib.metadata as m, lerobot; print('LeRobot', m.version('lerobot')); print(lerobot.__file__)"
 ```
 
-确认打印的版本为 `0.7.0`，源码路径位于当前工作区。后文的 `python`、`rerun` 等命令均使用已激活的本分支 `.venv`；已完成同步但未激活时，可用 `uv run --no-sync python ...` 执行 Python 命令。安装后，`python -m lerobot.scripts.lerobot_record` 等模块命令也可使用 `lerobot-record` 等同名 CLI 入口。
+确认打印的版本为 `0.7.0`，源码路径位于当前工作区。已有 `lerobot070` 环境时跳过创建并直接激活；后文的 `python`、`rerun` 等命令均在该 Conda 环境中运行，新终端先执行 `conda activate lerobot070`。安装后，`python -m lerobot.scripts.lerobot_record` 等模块命令也可使用 `lerobot-record` 等同名 CLI 入口。
 
 视频处理还需要在 `PATH` 中可用的 `ffmpeg`、`ffprobe` 及解码所需的 FFmpeg 库。PyTorch/CUDA 安装选择见 [LeRobot 安装说明](source/installation.mdx)。工作区移动或重新创建后，应在新路径重新准备环境。
 
-从 `dev` 的 `0.5.2` 迁移时，在本工作区安装新版依赖，并按第 3 节迁移配置。首次升级验证使用过共享系统依赖的临时 `.venv`；其测试结果及开发工具依赖冲突记录在[升级评估](lerobot_upstream_upgrade_2026-11-10.md)，不能替代干净环境验收。
+从 `dev` 的 `0.5.2` 迁移时，在本分支的独立 Conda 环境中安装新版依赖，并按第 3 节迁移配置。
 
 ## 2. 硬件参数
 
@@ -124,7 +136,7 @@ teleop:
 
 ## 4. 手动硬件检查
 
-以下命令在项目根目录、第 1 节准备并激活的 `.venv` 中运行。它们查询从臂反馈、向主手串口发送状态查询或读取相机图像，不下发机械臂、夹爪目标，也不自动初始化夹爪或切换通信协议。检查前先退出占用主手串口或相机的采集程序、相机查看器。
+以下命令在项目根目录、第 1 节准备并激活的 `lerobot070` Conda 环境中运行。它们查询从臂反馈、向主手串口发送状态查询或读取相机图像，不下发机械臂、夹爪目标，也不自动初始化夹爪或切换通信协议。检查前先退出占用主手串口或相机的采集程序、相机查看器。
 
 升级前的实机检查已确认：两侧 CTAG2F120 的 RM_ARM+ 位置反馈有效；两个腕部 D435 在重新上电后均能识别，并曾同时取得 `640×480、30 fps` RGB 图像。当前没有顶部相机。**这些是历史硬件验证结果，0.7.0 的实机采集仍需复查；每次重新连接、上电后也应重新检查。**
 
@@ -239,7 +251,7 @@ python -m json.tool /tmp/realman-cameras-readonly.json
 
 | 现象 | 判断与处理 |
 | --- | --- |
-| `cameras.error` 表示无法导入 `pyrealsense2` | 先确认正在使用正确的 `lerobot` 环境；依赖异常不能据此判断相机未连接 |
+| `cameras.error` 表示无法导入 `pyrealsense2` | 先确认正在使用正确的 `lerobot070` Conda 环境；依赖异常不能据此判断相机未连接 |
 | 枚举过程未报错但 `cameras.enumerated=[]` | 当前进程通过 RealSense SDK 未枚举到相机；修改 YAML 序列号无法解决。结合 `lsusb` 检查操作系统的 USB 枚举，再检查权限、驱动、供电、线束、Hub 和数据通路 |
 | 枚举出设备，但出现 `Expected one matching camera ... found []` | 对照枚举得到的序列号与本地 YAML 的 `serial_number_or_name`，确认是否漏接一台、序列号不符或设备更换 |
 | 能匹配设备，但没有 `frame`，出现启动失败或取帧超时 | 检查相机是否被其他程序占用、USB 带宽/连接是否稳定，以及是否支持配置的 `640×480、30 fps` RGB 流；可用 `lsusb -t` 辅助检查 USB 链路速度 |
@@ -428,7 +440,6 @@ ffprobe \
 | --- | --- |
 | [项目首页](../README.md) | 项目介绍、当前能力与快速开始 |
 | [夹爪修复与实机验证记录](realman_data_collection_check.md) | 恒零原因、实机证据、设备身份及已知限制 |
-| [0.7.0 升级评估与离线验证](lerobot_upstream_upgrade_2026-11-10.md) | 升级基线、配置与接口变化、历史离线证据及复现方法 |
 | [只读检查脚本](../examples/realman/check_realman_readonly.py) | 简洁结果及可选 JSON 报告 |
 | [夹爪连续监视器](../examples/realman/watch_realman_gripper.py) | 连续查看 RM+ 原始位置和归一化反馈 |
 | [离线采集管道检查](../examples/realman/audit_offline_pipeline.py) | 使用模拟传输验证适配与保存流程，不连接硬件 |
@@ -436,3 +447,28 @@ ffprobe \
 | [LeRobot 数据集工具](source/using_dataset_tools.mdx) | 数据集查看、编辑和管理 |
 
 本机厂家参考代码位于仓库同级的 `../rm_aloha_v1/`，用于查阅原始通信和遥操作实现，不随本仓库分发。相关历史验证记录中的设备参数以当时配置为准；连接前仍需核对当前本地配置。
+
+## 9. 策略训练
+
+先完成正式示教数据的质量检查，再使用上游训练入口。以下命令在本分支的 Conda 环境中执行，示例沿用模板的 `repo_id` 和 `root`；如果已修改本地配置，请同步替换这些值。
+
+```bash
+# 安装训练依赖，同时保留采集与相机依赖
+python -m pip install -e ".[core_scripts,intelrealsense,training]"
+
+lerobot-train \
+  --dataset.repo_id=local/realman_double_arm_dataset \
+  --dataset.root=datasets/realman_double_arm_dataset \
+  --policy.type=act \
+  --policy.device=cuda \
+  --policy.push_to_hub=false \
+  --output_dir=outputs/train/realman_act \
+  --job_name=realman_act \
+  --batch_size=8 \
+  --steps=10000 \
+  --trackio.enable=false
+```
+
+示例假定可用的 CUDA GPU，输出目录应尚不存在；批量大小与训练步数按数据规模和显存调整。ACT 默认视觉骨干可能需要下载预训练权重。选择 Diffusion、SmolVLA 或 π 系列时，另装对应扩展，例如 `python -m pip install -e ".[diffusion]"`、`python -m pip install -e ".[smolvla]"` 或 `python -m pip install -e ".[pi]"`。
+
+模型配置见 [ACT](source/policy_act_README.md)、[Diffusion](source/policy_diffusion_README.md) 和 [SmolVLA](source/policy_smolvla_README.md)。RealMan 任务的训练效果与闭环部署尚未验收，当前 RM+ 适配仍拒绝发送动作。

@@ -104,8 +104,8 @@ python examples/realman/check_realman_readonly.py --summary
 - **历史数据质量：** 已有旧数据的从臂夹爪曾恒零，主手还存在原始计数与归一化标尺差异及异常值，不能直接混训。正式历史数据保留原样。
 - **时间与保存：** 数据集时间戳按帧序号和 fps 生成，相机取最新帧时可能重复图像，不等于传感器硬件同步。本地配置使用异步写图、episode 结束后 H.264 编码，数值也应等 episode 完整保存后再使用。
 
-官方参考：[第三代末端工具 JSON](https://develop.realman-robotics.com/robot/json/endeffector/)、[RM+ 实时状态](https://develop.realman-robotics.com/robot/apic/struct/plusState/)、[RM_ARM+ 协议](https://gitee.com/RealManRobot/rm_arm_plus_protocol/blob/main/readme.md)。原始设备 PDF 手册保留在仓库根目录。
+官方参考：[第三代末端工具 JSON](https://develop.realman-robotics.com/robot/json/endeffector/)、[RM+ 实时状态](https://develop.realman-robotics.com/robot/apic/struct/plusState/)、[RM_ARM+ 协议](https://gitee.com/RealManRobot/rm_arm_plus_protocol/blob/main/readme.md)。原始设备 PDF 手册保留在 `docs/` 目录。
 
 离线验证保留[完整采集管道检查脚本](../examples/realman/audit_offline_pipeline.py)及 `tests/common/test_realman_*.py` 中的反馈、只读、重连和被动录制回归测试。一次性动作探针及其快照不作为维护入口保留。
 
-夹爪恒零修复最初在定制的 `0.5.2` 源码快照完成；该旧快照没有保留可直接追溯的上游共同历史。当前分支基于上游 `v0.7.0` 并保留了修复，Dataset 格式仍为 `v3.0`。包版本、数据集格式及本记录的验证日期应分别理解；升级本身不会修复历史夹爪数据。新版的离线迁移证据及复现方法见[升级评估](lerobot_upstream_upgrade_2026-11-10.md)。
+夹爪恒零修复最初在定制的 `0.5.2` 源码快照完成；该旧快照没有保留可直接追溯的上游共同历史。当前分支基于上游 `v0.7.0` 并保留了修复，Dataset 格式仍为 `v3.0`。包版本、数据集格式及本记录的验证日期应分别理解；升级本身不会修复历史夹爪数据。
