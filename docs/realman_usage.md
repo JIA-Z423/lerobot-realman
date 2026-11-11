@@ -12,29 +12,32 @@
 - [6. 数据格式](#6-数据格式)
 - [7. 数据可视化](#7-数据可视化)
 - [8. 使用范围与相关资料](#8-使用范围与相关资料)
+- [9. 策略训练](#9-策略训练)
 
 ## 1. 环境安装
 
-进入 LeRobot 环境：
+新机器先准备 Git 和 [Conda（Miniforge）](https://conda-forge.org/download/)，获取本分支源码；已有源码时跳过此步：
 
 ```bash
+git clone --branch dev https://github.com/JIA-Z423/lerobot-realman.git lerobot-realman-dev
+cd lerobot-realman-dev
+```
+
+请安装本仓库源码，公开 PyPI 包不包含这里的 RealMan 定制适配。以下安装和运行命令都在项目根目录执行。
+
+在项目根目录使用 Conda 建立 Python 3.12 环境；已有配置好的 `lerobot` 环境时跳过创建和重复安装，直接激活后检查依赖：
+
+```bash
+conda create -n lerobot python=3.12 pip -y
 conda activate lerobot
+conda install -c conda-forge ffmpeg -y
+python -m pip install -e ".[core_scripts,intelrealsense]"
 export PYTHONPATH="$PWD/src${PYTHONPATH:+:$PYTHONPATH}"
-```
-
-检查主要依赖：
-
-```bash
 python -c "import serial, pyrealsense2, draccus; print('ok')"
+python -c "import importlib.metadata as m, lerobot; print('LeRobot', m.version('lerobot')); print(lerobot.__file__)"
 ```
 
-本机已有环境时无需重新安装。新机器可参考仓库中的 [LeRobot 安装说明](source/installation.mdx)；本项目需要 Python 3.12+、采集依赖 `core_scripts`、RealSense 依赖 `intelrealsense`，以及视频处理工具 FFmpeg。使用 uv 时，可在项目根目录执行：
-
-```bash
-uv sync --locked --extra core_scripts --extra intelrealsense
-```
-
-uv 管理的环境中，将后文的 `python` 改为 `uv run python`，并使用 `uv run lerobot-dataset-viz` 等入口。本文后续示例沿用本机已安装的 Conda 环境。
+确认版本为 `0.5.2`，源码路径指向当前分支工作区。`core_scripts` 提供数据集、硬件和可视化依赖，`intelrealsense` 提供相机 SDK；PyTorch/CUDA 与 FFmpeg 的安装细节见 [LeRobot 安装说明](source/installation.mdx)。后续命令均在已激活的 `lerobot` Conda 环境中运行，新终端先执行 `conda activate lerobot`；升级分支使用独立的 `lerobot070` 环境。
 
 ## 2. 硬件参数
 
@@ -103,6 +106,8 @@ teleop:
 | `teleop.left_arm_config` / `right_arm_config` | 分别核对主手串口、460800 波特率及归一化比例 |
 
 当前双臂夹爪是正式采集 schema 的一部分。公开模板和本地配置使用 `gripper_feedback_source: rm_plus`，读取 `get_rm_plus_state_info.state_info.pos[0]`，按 `gripper_scale=1000.0` 归一化；它不是毫米。默认数据为左右各 6 轴 + 夹爪，共 `14` 维 action/state。RM+ 适配当前只支持读取，发送动作会明确报错。普通原生夹爪可显式使用 `gripper_feedback_source: native`。
+
+被动采集保持 `passive_recording: true`，两侧从臂的 `initialize_gripper_route`、`initialize_gripper_modbus`、`enable_calibration` 均为 `false`。当前 RM+ 反馈使用 `sdk_backend: socket_json`。采集命令使用 `--config_path`，检查器与夹爪监视器使用 `--config-path`。
 
 配置中的 `control_hz` 仅作为兼容字段保留；被动硬件遥操作模式下，LeRobot 不控制主从臂闭环，只按 `dataset.fps` 采样主手动作、从臂状态和相机帧。
 
@@ -300,7 +305,11 @@ python -m lerobot.scripts.lerobot_record \
   --play_sounds=false
 ```
 
-等待当前 episode 的图像写入、H.264 编码和数据保存完成后，再退出或检查文件。诊断数据、历史夹爪恒零数据与新示教数据应分目录保留，不能因字段同名就直接混合训练。
+键盘监听可用时，右方向键提前结束当前阶段，左方向键丢弃当前 episode 缓冲并重录，`Esc` 结束录制流程。监听需要可用的显示环境与 `pynput`；无可用监听时按配置时长运行。
+
+续录应保持原 FPS、机器人类型、相机配置和数据字段一致，`dataset.num_episodes` 表示本次新增段数。
+
+等待当前 episode 的图像写入、H.264 编码和数据保存完成后，再退出或检查文件。`Ctrl+C` 不能视为当前未保存 episode 已落盘。诊断数据、历史夹爪恒零数据与新示教数据应分目录保留，不能因字段同名就直接混合训练。
 
 ## 6. 数据格式
 
@@ -399,3 +408,27 @@ conda run -n lerobot ffprobe \
 | [LeRobot 数据集工具](source/using_dataset_tools.mdx) | 数据集查看、编辑和管理 |
 
 本机厂家参考代码位于仓库同级的 `../rm_aloha_v1/`，用于查阅原始通信和遥操作实现，不随本仓库分发。相关历史验证记录中的设备参数以当时配置为准；连接前仍需核对当前本地配置。
+
+## 9. 策略训练
+
+先完成正式示教数据的质量检查，再使用上游训练入口。以下命令在本分支的 Conda 环境中执行，示例沿用模板的 `repo_id` 和 `root`；如果已修改本地配置，请同步替换这些值。
+
+```bash
+python -m pip install -e ".[core_scripts,intelrealsense,training]"
+
+lerobot-train \
+  --policy.type=act \
+  --policy.device=cuda \
+  --dataset.repo_id=local/realman_double_arm_dataset \
+  --dataset.root=datasets/realman_double_arm_dataset \
+  --output_dir=outputs/train/realman_act \
+  --job_name=realman_act \
+  --batch_size=8 \
+  --steps=10000 \
+  --policy.push_to_hub=false \
+  --wandb.enable=false
+```
+
+示例假定可用的 CUDA GPU，输出目录应尚不存在；批量大小与训练步数按数据规模和显存调整。ACT 默认视觉骨干可能需要下载预训练权重。选择 Diffusion、SmolVLA 或 π 系列时，另装对应扩展，例如 `python -m pip install -e ".[diffusion]"`、`python -m pip install -e ".[smolvla]"` 或 `python -m pip install -e ".[pi]"`。
+
+模型配置见 [ACT](source/policy_act_README.md)、[Diffusion](source/policy_diffusion_README.md) 和 [SmolVLA](source/policy_smolvla_README.md)。RealMan 任务的训练效果与闭环部署尚未验收，当前 RM+ 适配仍拒绝发送动作。
