@@ -76,7 +76,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
-          lfs: true
+          lfs: false
+
+      # This repository keeps upstream fixture pointers; download their objects from the public source.
+      - name: Download upstream LFS test artifacts
+        run: |
+          git lfs install --local
+          git -c lfs.url=https://github.com/huggingface/lerobot.git/info/lfs \
+            lfs pull --include="tests/artifacts/**" --exclude=""
 
       # NOTE(Steven): Mount to `/mnt` to avoid the limited storage on `/home`. Consider cleaning default SDKs or using self-hosted runners for more space.
       # (As of 2024-06-10, the runner's `/home` has only 6.2 GB free—8% of its 72 GB total.)

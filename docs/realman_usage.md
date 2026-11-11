@@ -49,14 +49,14 @@ python -c "import importlib.metadata as m, lerobot; print('LeRobot', m.version('
 
 公开配置使用以下占位符。运行前请在本地 `.local.yaml` 配置中替换为真实设备参数：
 
-| 设备 | 参数 |
-| --- | --- |
-| 左从臂 | `REPLACE_WITH_LEFT_REALMAN_ARM_HOST:8080` |
-| 右从臂 | `REPLACE_WITH_RIGHT_REALMAN_ARM_HOST:8080` |
-| 左主手 | `REPLACE_WITH_LEFT_MASTER_SERIAL_PORT` |
-| 右主手 | `REPLACE_WITH_RIGHT_MASTER_SERIAL_PORT` |
-| 左腕相机 | `REPLACE_WITH_LEFT_WRIST_CAMERA_SERIAL` |
-| 右腕相机 | `REPLACE_WITH_RIGHT_WRIST_CAMERA_SERIAL` |
+| 设备     | 参数                                       |
+| -------- | ------------------------------------------ |
+| 左从臂   | `REPLACE_WITH_LEFT_REALMAN_ARM_HOST:8080`  |
+| 右从臂   | `REPLACE_WITH_RIGHT_REALMAN_ARM_HOST:8080` |
+| 左主手   | `REPLACE_WITH_LEFT_MASTER_SERIAL_PORT`     |
+| 右主手   | `REPLACE_WITH_RIGHT_MASTER_SERIAL_PORT`    |
+| 左腕相机 | `REPLACE_WITH_LEFT_WRIST_CAMERA_SERIAL`    |
+| 右腕相机 | `REPLACE_WITH_RIGHT_WRIST_CAMERA_SERIAL`   |
 
 如果重启后串口名发生变化，建议把 `/dev/ttyUSB*` 改成稳定的设备路径：
 
@@ -105,24 +105,24 @@ teleop:
 
 正式采集前核对：
 
-| 字段 | 设置方法 |
-| --- | --- |
-| `dataset.repo_id` | 数据集标识，如 `local/realman_double_arm_dataset`；本地保存时无需上传 |
-| `dataset.no_stamp` | 模板为 `true`，新建录制保持原始 `repo_id`；配置类默认 `false` 会为新录制的标识追加时间后缀 |
-| `dataset.root` | 首次采集使用新目录；同一目录用于后续续录和可视化 |
-| `dataset.single_task` | 填写实际任务描述，避免一直使用通用的检查说明 |
-| `dataset.num_episodes` / `episode_time_s` / `fps` | 分别设置采集段数、每段时长和目标采样频率 |
-| `dataset.streaming_encoding` / `rgb_encoder.vcodec` | 模板为 `false` / `h264`，先写图像，再在保存 episode 时编码 |
-| `robot.left_arm_config` / `right_arm_config` | 分别核对从臂地址、RM+ 夹爪配置和相机序列号 |
-| `teleop.left_arm_config` / `right_arm_config` | 分别核对主手串口、460800 波特率及归一化比例 |
+| 字段                                                | 设置方法                                                                                   |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `dataset.repo_id`                                   | 数据集标识，如 `local/realman_double_arm_dataset`；本地保存时无需上传                      |
+| `dataset.no_stamp`                                  | 模板为 `true`，新建录制保持原始 `repo_id`；配置类默认 `false` 会为新录制的标识追加时间后缀 |
+| `dataset.root`                                      | 首次采集使用新目录；同一目录用于后续续录和可视化                                           |
+| `dataset.single_task`                               | 填写实际任务描述，避免一直使用通用的检查说明                                               |
+| `dataset.num_episodes` / `episode_time_s` / `fps`   | 分别设置采集段数、每段时长和目标采样频率                                                   |
+| `dataset.streaming_encoding` / `rgb_encoder.vcodec` | 模板为 `false` / `h264`，先写图像，再在保存 episode 时编码                                 |
+| `robot.left_arm_config` / `right_arm_config`        | 分别核对从臂地址、RM+ 夹爪配置和相机序列号                                                 |
+| `teleop.left_arm_config` / `right_arm_config`       | 分别核对主手串口、460800 波特率及归一化比例                                                |
 
 从旧版本迁移时核对：
 
-| 旧配置或调用 | 本分支的写法与行为 |
-| --- | --- |
+| 旧配置或调用                                     | 本分支的写法与行为                                                                                   |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
 | `dataset.vcodec: h264` / `--dataset.vcodec=h264` | 改为 YAML 中的 `dataset.rgb_encoder.vcodec` / CLI 的 `--dataset.rgb_encoder.vcodec=h264`；删除旧字段 |
-| 省略 `dataset.no_stamp` | 如需使用本手册的固定标识，显式设为 `true`；已有带时间后缀的数据集续录时使用其实际标识 |
-| 使用 `lerobot-record --policy.*` 运行策略 | 新版 `RecordConfig` 没有 `policy` 字段，采集必须有 `teleop`；策略部署入口为 `lerobot-rollout` |
+| 省略 `dataset.no_stamp`                          | 如需使用本手册的固定标识，显式设为 `true`；已有带时间后缀的数据集续录时使用其实际标识                |
+| 使用 `lerobot-record --policy.*` 运行策略        | 新版 `RecordConfig` 没有 `policy` 字段，采集必须有 `teleop`；策略部署入口为 `lerobot-rollout`        |
 
 完整采集配置由 [RecordConfig](../src/lerobot/scripts/lerobot_record.py) 和共享的 [DatasetRecordConfig](../src/lerobot/configs/dataset.py) 定义。采集命令使用 `--config_path`（下划线）；分项检查器和夹爪监视器使用 `--config-path`（连字符）。硬件检查器读取 YAML 中的设备字段，检查通过不等于整个采集配置已通过 0.7.0 解析。
 
@@ -186,12 +186,12 @@ python -m json.tool /tmp/realman-readonly.json
 
 **仅使用 `--output`、未加 `--summary` 时，出现 `Read-only check saved to ...` 或退出码为 0，只代表报告已生成，不代表所有硬件通过。** 详细报告模式会将许多设备异常写入 JSON，应按需逐项查看：
 
-| 设备 | 查看位置 | 正常判据 |
-| --- | --- | --- |
-| 左、右从臂 | `followers.left/right` 的 `queries` | 没有连接异常；`get_joint_degree` 的 `response.joint` 各有 6 个有效数值；该查询没有 `error` |
-| 左、右主手 | `masters.left/right` | `exists=true`，`samples` 非空，每个 `state` 包含 6 个关节和 `gripper.pos` 共 7 个有效数值；设备和样本均无 `error` |
-| 左、右夹爪 | `followers.left/right.rm_plus` | `enabled=true`、`errors=[]`，能够读到 `base_info` 和 `samples[].response.state_info`；还须通过 4.2 的正式解析器检查 |
-| 左、右腕部相机 | `cameras.enumerated`、`cameras.configured.left_wrist/right_wrist` | 枚举列表包含配置中的两台设备；两侧均有 `frame`，尺寸为 `640×480`，没有 `error` 或 `stop_error` |
+| 设备           | 查看位置                                                          | 正常判据                                                                                                            |
+| -------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| 左、右从臂     | `followers.left/right` 的 `queries`                               | 没有连接异常；`get_joint_degree` 的 `response.joint` 各有 6 个有效数值；该查询没有 `error`                          |
+| 左、右主手     | `masters.left/right`                                              | `exists=true`，`samples` 非空，每个 `state` 包含 6 个关节和 `gripper.pos` 共 7 个有效数值；设备和样本均无 `error`   |
+| 左、右夹爪     | `followers.left/right.rm_plus`                                    | `enabled=true`、`errors=[]`，能够读到 `base_info` 和 `samples[].response.state_info`；还须通过 4.2 的正式解析器检查 |
+| 左、右腕部相机 | `cameras.enumerated`、`cameras.configured.left_wrist/right_wrist` | 枚举列表包含配置中的两台设备；两侧均有 `frame`，尺寸为 `640×480`，没有 `error` 或 `stop_error`                      |
 
 同时查看报告顶层及各设备的 `error`、`connection_error`、`close_error`。`skipped` 列出的设备没有参加检查，不能判为通过。分项排查可追加 `--skip-cameras`、`--skip-masters` 或 `--skip-followers`。
 
@@ -249,13 +249,13 @@ python -m json.tool /tmp/realman-cameras-readonly.json
 
 按报告中的实际结果排查：
 
-| 现象 | 判断与处理 |
-| --- | --- |
-| `cameras.error` 表示无法导入 `pyrealsense2` | 先确认正在使用正确的 `lerobot070` Conda 环境；依赖异常不能据此判断相机未连接 |
-| 枚举过程未报错但 `cameras.enumerated=[]` | 当前进程通过 RealSense SDK 未枚举到相机；修改 YAML 序列号无法解决。结合 `lsusb` 检查操作系统的 USB 枚举，再检查权限、驱动、供电、线束、Hub 和数据通路 |
-| 枚举出设备，但出现 `Expected one matching camera ... found []` | 对照枚举得到的序列号与本地 YAML 的 `serial_number_or_name`，确认是否漏接一台、序列号不符或设备更换 |
-| 能匹配设备，但没有 `frame`，出现启动失败或取帧超时 | 检查相机是否被其他程序占用、USB 带宽/连接是否稳定，以及是否支持配置的 `640×480、30 fps` RGB 流；可用 `lsusb -t` 辅助检查 USB 链路速度 |
-| 两侧均有正确尺寸的 `frame` | 分别取帧通过；继续目视检查画面和正式采集中的双路视频 |
+| 现象                                                           | 判断与处理                                                                                                                                            |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cameras.error` 表示无法导入 `pyrealsense2`                    | 先确认正在使用正确的 `lerobot070` Conda 环境；依赖异常不能据此判断相机未连接                                                                          |
+| 枚举过程未报错但 `cameras.enumerated=[]`                       | 当前进程通过 RealSense SDK 未枚举到相机；修改 YAML 序列号无法解决。结合 `lsusb` 检查操作系统的 USB 枚举，再检查权限、驱动、供电、线束、Hub 和数据通路 |
+| 枚举出设备，但出现 `Expected one matching camera ... found []` | 对照枚举得到的序列号与本地 YAML 的 `serial_number_or_name`，确认是否漏接一台、序列号不符或设备更换                                                    |
+| 能匹配设备，但没有 `frame`，出现启动失败或取帧超时             | 检查相机是否被其他程序占用、USB 带宽/连接是否稳定，以及是否支持配置的 `640×480、30 fps` RGB 流；可用 `lsusb -t` 辅助检查 USB 链路速度                 |
+| 两侧均有正确尺寸的 `frame`                                     | 分别取帧通过；继续目视检查画面和正式采集中的双路视频                                                                                                  |
 
 需要检查左右视角、遮挡或黑屏时，可将两路相机图像临时保存到 `/tmp`：
 
@@ -336,11 +336,11 @@ python -m lerobot.scripts.lerobot_record \
 
 交互式终端支持以下录制控制；使用终端键盘后端时保持该终端聚焦。无可用显示且标准输入不是 TTY 时没有键盘监听，录制按配置的时长和段数运行。
 
-| 按键 | 行为 |
-| --- | --- |
-| `n` / 右方向键 | 提前结束当前录制或重置阶段 |
-| `r` / 左方向键 | 丢弃当前 episode 缓冲并重新录制 |
-| `q` / `Esc` | 结束录制流程，等待保存及清理完成 |
+| 按键           | 行为                             |
+| -------------- | -------------------------------- |
+| `n` / 右方向键 | 提前结束当前录制或重置阶段       |
+| `r` / 左方向键 | 丢弃当前 episode 缓冲并重新录制  |
+| `q` / `Esc`    | 结束录制流程，等待保存及清理完成 |
 
 等待 episode 的图像写入、H.264 编码和数据保存完成后，再退出或检查文件。优先使用 `q` / `Esc` 完成结束流程；`Ctrl+C` 中断不能视为当前未保存 episode 已落盘。诊断数据、历史夹爪恒零数据与新示教数据应分目录保留，不能因字段同名就直接混合训练。
 
@@ -348,12 +348,12 @@ python -m lerobot.scripts.lerobot_record \
 
 采集得到的数据包含：
 
-| 字段 | 说明 |
-| --- | --- |
-| `action` | 14 维双主手测量状态，作为示教动作记录 |
-| `observation.state` | 14 维双从臂与夹爪的实际反馈 |
-| `observation.images.left_wrist` | 左腕 RGB 视频 |
-| `observation.images.right_wrist` | 右腕 RGB 视频 |
+| 字段                             | 说明                                  |
+| -------------------------------- | ------------------------------------- |
+| `action`                         | 14 维双主手测量状态，作为示教动作记录 |
+| `observation.state`              | 14 维双从臂与夹爪的实际反馈           |
+| `observation.images.left_wrist`  | 左腕 RGB 视频                         |
+| `observation.images.right_wrist` | 右腕 RGB 视频                         |
 
 正式 14 维顺序为左侧 6 个关节、左夹爪、右侧 6 个关节、右夹爪；夹爪索引为 6、13（从 0 开始）。关节与夹爪的比例来自各自配置，主手和从臂的物理映射及标尺仍需在正式示教前核对。
 
@@ -436,15 +436,15 @@ ffprobe \
 
 策略推理和执行入口为 `lerobot-rollout`，详见[策略部署说明](source/inference.mdx)。本分支已注册 RealMan 类型，但 RM+ 后端仍拒绝发送动作，RealMan 策略训练效果和实际闭环部署也未验收；不能直接把被动采集配置切成主动控制就用于策略执行。
 
-| 资料 | 用途 |
-| --- | --- |
-| [项目首页](../README.md) | 项目介绍、当前能力与快速开始 |
-| [夹爪修复与实机验证记录](realman_data_collection_check.md) | 恒零原因、实机证据、设备身份及已知限制 |
-| [只读检查脚本](../examples/realman/check_realman_readonly.py) | 简洁结果及可选 JSON 报告 |
-| [夹爪连续监视器](../examples/realman/watch_realman_gripper.py) | 连续查看 RM+ 原始位置和归一化反馈 |
+| 资料                                                              | 用途                                       |
+| ----------------------------------------------------------------- | ------------------------------------------ |
+| [项目首页](../README.md)                                          | 项目介绍、当前能力与快速开始               |
+| [夹爪修复与实机验证记录](realman_data_collection_check.md)        | 恒零原因、实机证据、设备身份及已知限制     |
+| [只读检查脚本](../examples/realman/check_realman_readonly.py)     | 简洁结果及可选 JSON 报告                   |
+| [夹爪连续监视器](../examples/realman/watch_realman_gripper.py)    | 连续查看 RM+ 原始位置和归一化反馈          |
 | [离线采集管道检查](../examples/realman/audit_offline_pipeline.py) | 使用模拟传输验证适配与保存流程，不连接硬件 |
-| [LeRobot 安装说明](source/installation.mdx) | 新机器环境与可选依赖安装 |
-| [LeRobot 数据集工具](source/using_dataset_tools.mdx) | 数据集查看、编辑和管理 |
+| [LeRobot 安装说明](source/installation.mdx)                       | 新机器环境与可选依赖安装                   |
+| [LeRobot 数据集工具](source/using_dataset_tools.mdx)              | 数据集查看、编辑和管理                     |
 
 本机厂家参考代码位于仓库同级的 `../rm_aloha_v1/`，用于查阅原始通信和遥操作实现，不随本仓库分发。相关历史验证记录中的设备参数以当时配置为准；连接前仍需核对当前本地配置。
 

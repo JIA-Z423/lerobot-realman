@@ -68,12 +68,12 @@ lerobot-record \
 
 ## 数据格式
 
-| 字段 | 内容 |
-| --- | --- |
-| `action` | 14 维双主手示教动作 |
-| `observation.state` | 14 维双从臂关节与夹爪实际反馈 |
-| `observation.images.left_wrist` | 左腕 RGB 视频 |
-| `observation.images.right_wrist` | 右腕 RGB 视频 |
+| 字段                             | 内容                          |
+| -------------------------------- | ----------------------------- |
+| `action`                         | 14 维双主手示教动作           |
+| `observation.state`              | 14 维双从臂关节与夹爪实际反馈 |
+| `observation.images.left_wrist`  | 左腕 RGB 视频                 |
+| `observation.images.right_wrist` | 右腕 RGB 视频                 |
 
 数值顺序为左侧 6 关节、左夹爪、右侧 6 关节、右夹爪，夹爪索引为 `6`、`13`（从 0 开始）。RM+ 夹爪位置归一化为 `0..1`，闭合时 `0` 可以正常；主手与从臂的物理映射和标尺需在示教前核对。
 
@@ -81,14 +81,14 @@ lerobot-record \
 
 ## 文档
 
-| 内容 | 入口 |
-| --- | --- |
-| 安装、配置、硬件检查与采集 | [RealMan 操作手册](docs/realman_usage.md) |
-| 数据查看与导出 | [数据可视化](docs/realman_usage.md#7-数据可视化) |
-| 策略依赖与 ACT 训练示例 | [策略训练](docs/realman_usage.md#9-策略训练) |
-| 夹爪反馈、修复与验证范围 | [实机验证记录](docs/realman_data_collection_check.md) |
-| 数据集编辑与管理 | [数据集工具](docs/source/using_dataset_tools.mdx) |
-| 更多教程与接口 | [文档目录](docs/README.md) · [上游文档源码](docs/source/) |
+| 内容                       | 入口                                                      |
+| -------------------------- | --------------------------------------------------------- |
+| 安装、配置、硬件检查与采集 | [RealMan 操作手册](docs/realman_usage.md)                 |
+| 数据查看与导出             | [数据可视化](docs/realman_usage.md#7-数据可视化)          |
+| 策略依赖与 ACT 训练示例    | [策略训练](docs/realman_usage.md#9-策略训练)              |
+| 夹爪反馈、修复与验证范围   | [实机验证记录](docs/realman_data_collection_check.md)     |
+| 数据集编辑与管理           | [数据集工具](docs/source/using_dataset_tools.mdx)         |
+| 更多教程与接口             | [文档目录](docs/README.md) · [上游文档源码](docs/source/) |
 
 ## 贡献与许可
 

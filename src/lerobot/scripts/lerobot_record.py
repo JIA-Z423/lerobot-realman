@@ -235,6 +235,7 @@ def _validate_passive_recording_action_features(
 
 def _validate_realman_passive_recording_config(robot_config: RobotConfig) -> None:
     """Reject RealMan initialization that writes device configuration during passive recording."""
+    arm_configs: list[tuple[str, realman_follower.RealManFollowerBaseConfig]]
     if isinstance(robot_config, realman_follower.RealManFollowerConfig):
         arm_configs = [("robot", robot_config)]
     elif isinstance(robot_config, double_realman_follower.DoubleRealManFollowerConfig):
