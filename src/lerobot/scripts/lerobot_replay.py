@@ -57,16 +57,16 @@ from lerobot.robots import (  # noqa: F401
     RobotConfig,
     bi_openarm_follower,
     bi_so_follower,
+    double_realman_follower,
     earthrover_mini_plus,
     hope_jr,
     koch_follower,
     make_robot_from_config,
     omx_follower,
     openarm_follower,
-    realman_follower,
     reachy2,
+    realman_follower,
     so_follower,
-    double_realman_follower,
     unitree_g1,
 )
 from lerobot.utils.constants import ACTION

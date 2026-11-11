@@ -46,18 +46,19 @@ from lerobot.robots import (  # noqa: F401
     RobotConfig,
     bi_openarm_follower,
     bi_so_follower,
+    double_realman_follower,
     koch_follower,
     make_robot_from_config,
     omx_follower,
     openarm_follower,
     realman_follower,
     so_follower,
-    double_realman_follower,
 )
 from lerobot.teleoperators import (  # noqa: F401
     TeleoperatorConfig,
     bi_openarm_leader,
     bi_so_leader,
+    double_rm_aloha_master,
     gamepad,
     koch_leader,
     make_teleoperator_from_config,
@@ -66,7 +67,6 @@ from lerobot.teleoperators import (  # noqa: F401
     openarm_mini,
     rm_aloha_master,
     so_leader,
-    double_rm_aloha_master,
 )
 from lerobot.utils.robot_utils import precise_sleep
 

@@ -20,7 +20,6 @@ import ctypes
 import platform
 from pathlib import Path
 
-
 RM65 = 65
 
 

@@ -40,6 +40,7 @@ from lerobot.robots import (  # noqa: F401
     RobotConfig,
     bi_openarm_follower,
     bi_so_follower,
+    double_realman_follower,
     hope_jr,
     koch_follower,
     lekiwi,
@@ -48,13 +49,13 @@ from lerobot.robots import (  # noqa: F401
     openarm_follower,
     realman_follower,
     so_follower,
-    double_realman_follower,
 )
 from lerobot.teleoperators import (  # noqa: F401
     Teleoperator,
     TeleoperatorConfig,
     bi_openarm_leader,
     bi_so_leader,
+    double_rm_aloha_master,
     homunculus,
     koch_leader,
     make_teleoperator_from_config,
@@ -64,7 +65,6 @@ from lerobot.teleoperators import (  # noqa: F401
     rm_aloha_master,
     so_leader,
     unitree_g1,
-    double_rm_aloha_master,
 )
 from lerobot.utils.import_utils import register_third_party_plugins
 from lerobot.utils.utils import init_logging

@@ -15,11 +15,11 @@
 
 按配置类的源码注册装饰器核对，原树有 15 个 policy 注册名，新版有 29 个 policy 注册名和 4 个独立 reward 注册名。这是源码能力清单，不表示所有模型的依赖、权重或训练均已验证。
 
-| 变化 | 配置类型 |
-| --- | --- |
+| 变化                      | 配置类型                                                                                                                                                                                    |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 新增的 VLA / 世界动作模型 | `dm05`、`eo1`、`evo1`、`fastwam`、`fineart_vla`、`flux3`、`g05`、`lawam`、`lingbot_va`、`lingbot_vla_v2`、`longwam`、`molmoact2`、`vla_jepa`、`wall_oss_05`、`cosmos3_nano`、`cosmos3_edge` |
-| RL 结构调整 | 原 `sac` 进入算法配置，policy 改为 `gaussian_actor` |
-| 奖励模型独立 | `reward_classifier`、`sarm` 移至 rewards，新增 `robometer`、`topreward` |
+| RL 结构调整               | 原 `sac` 进入算法配置，policy 改为 `gaussian_actor`                                                                                                                                         |
+| 奖励模型独立              | `reward_classifier`、`sarm` 移至 rewards，新增 `robometer`、`topreward`                                                                                                                     |
 
 `cosmos3` 是目录和 extra 名，实际 policy 类型为 `cosmos3_nano` / `cosmos3_edge`。新增模型依赖共享 VLA、处理器、配置与推理接口，不适合只复制模型目录到旧分支。
 

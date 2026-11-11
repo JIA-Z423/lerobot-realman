@@ -154,9 +154,7 @@ class RMAlohaMaster(Teleoperator):
         if start < 0:
             if allow_incomplete:
                 return ""
-            raise RuntimeError(
-                f"RM Aloha master state frame not found on {self.config.port}: {encoded!r}"
-            )
+            raise RuntimeError(f"RM Aloha master state frame not found on {self.config.port}: {encoded!r}")
         return encoded[start:]
 
     def _find_state_frame_start(self, encoded: str) -> int:

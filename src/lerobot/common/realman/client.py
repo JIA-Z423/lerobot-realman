@@ -519,7 +519,11 @@ class RealManSDKClient(BaseRealManClient):
 
     def disconnect(self) -> None:
         if self._robot is not None and self._handle is not None:
-            for method_name in ("rm_delete_robot_arm", "rm_destory", "rm_destroy"):
+            for method_name in (
+                "rm_delete_robot_arm",
+                "rm_destory",  # Vendor SDK spelling.  # spellchecker:disable-line
+                "rm_destroy",
+            ):
                 method = getattr(self._robot, method_name, None)
                 if callable(method):
                     try:
